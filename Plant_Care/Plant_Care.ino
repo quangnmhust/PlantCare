@@ -194,17 +194,19 @@ void RS485_task(void *pvParameters){
 void SHT25_task(void *pvParameters){
 
   while(1){
-    // if (xSemaphoreTake(I2C_mutex, portTICK_PERIOD_MS) == pdTRUE)
-    // {
-      Serial.print("Humidity    : ");
-      Serial.print(H_Sens.getHumidity());
-      Serial.println(" %RH");
-      Serial.print("Temperature : ");
-      Serial.print(H_Sens.getTemperature());
-      Serial.println(" C");
-
-    //   xSemaphoreGive(I2C_mutex);
-    // }
+    if (xSemaphoreTake(I2C_mutex, portTICK_PERIOD_MS) == pdTRUE)
+    {
+      Serial.println(pcTaskGetName(NULL));
+      // volatile unsigned int data[2];
+      vTaskDelay(500/portTICK_PERIOD_MS);
+      Wire.beginTransmission(SHT25_Addr);
+      Wire.write(0xF5);
+      Wire.endTransmission();
+      vTaskDelay(500/portTICK_PERIOD_MS);
+      Wire.requestFrom(SHT25_Addr, 2);
+      Serial.println(Wire.available());
+      xSemaphoreGive(I2C_mutex);
+    }
     vTaskDelay(1000/portTICK_PERIOD_MS);
   }
 }
