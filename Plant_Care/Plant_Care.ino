@@ -1,7 +1,14 @@
+#include <SoftwareSerial.h>
+
 #include "Wire.h"
 #include "String.h"
 
-#include <SoftwareSerial.h>
+#include<SHT25.h>
+
+SHT25 H_Sens;
+
+// SHT25 I2C address is 0x40(64)
+#define SHT25_Addr 0x40
 
 //Define for RS485 sensor
 #define ADDRESS 0x02
@@ -18,12 +25,14 @@
 const byte request[] = {ADDRESS, FUNCTION_CODE, INITIAL_ADDRESS_HI, INITIAL_ADDRESS_LO, DATA_LENGTH_HI, DATA_LENGTH_LO, CHECK_CODE_LO, CHECK_CODE_HI};
 byte sensorResponse[NUMBER_BYTES_RESPONES];
 
-SoftwareSerial mod(2, 3); // Software serial for RS485 communication
+SoftwareSerial mod(17, 16); // Software serial for RS485 communication rx21 tx22
 
 TaskHandle_t RS485_task_handle;
 TaskHandle_t SHT25_task_handle;
 TaskHandle_t BH1750_task_handle;
 TaskHandle_t DS3231_task_handle;
+
+SemaphoreHandle_t I2C_mutex = NULL;
 
 typedef struct Data_manager{
   int Time_year;
@@ -44,7 +53,8 @@ typedef struct Data_manager{
   float Env_Lux;
 } Data_t;
 
-volatile Data_t SensorData;
+Data_t SensorData;
+// Data_t Data;
 
 float convertBytesToFloat(byte hi, byte low){
   int intVal = (hi << 8) | low;
@@ -73,13 +83,13 @@ void getSoilSensorParameter(){
 
 }
 
-void printSoilParameters(float soilHumi, float soilTemp, float soilPH, float soilN, float soilP, float soilK){
+void printSoilParameters(Data_t Data){
   Serial.print("Độ ẩm: ");
-  Serial.print(soilHumi);
+  Serial.print(Data.Soil_humi);
   Serial.println(" %RH");
 
   Serial.print("Nhiệt độ: ");
-  Serial.print(soilTemp);
+  Serial.print(Data.Soil_temp);
   Serial.println(" oC");
 
   // Serial.print("Conductivity: ");
@@ -87,22 +97,31 @@ void printSoilParameters(float soilHumi, float soilTemp, float soilPH, float soi
   // Serial.println(" uS/cm");
 
   Serial.print("pH hiện tại: ");
-  Serial.print(soilPH);
+  Serial.print(Data.Soil_pH);
   Serial.println(" ");
 
   Serial.print("Nito hiện tại: ");
-  Serial.print(soilN);
+  Serial.print(Data.Soil_Nito);
   Serial.println(" ppm");
 
   Serial.print("Photpho hiện tại: ");
-  Serial.print(soilP);
+  Serial.print(Data.Soil_Phosp);
   Serial.println(" ppm");
 
   Serial.print("Kali hiện tại: ");
-  Serial.print(soilK);
+  Serial.print(Data.Soil_Kali);
   Serial.println(" ppm");
 }
 
+void printEnvParameters(Data_t Data){
+  Serial.print("Độ ẩm env: ");
+  Serial.print(Data.Env_Humi);
+  Serial.println(" %RH");
+
+  Serial.print("Nhiệt độ env: ");
+  Serial.print(Data.Env_temp);
+  Serial.println(" oC");
+}
 
 void DS3231_task(void *pvParameters); //Take time task
 
@@ -113,10 +132,16 @@ void BH1750_task(void *pvParameters); // Lux parameter
 void setup() {
   Serial.begin(9600); //init serial with computer
 
+  I2C_mutex = xSemaphoreCreateMutex();  //Init I2C mutex
+  if (I2C_mutex != NULL)
+  {
+    Serial.println("I2C_mutex created");
+  }
+
   // xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 2, &RS485_task_handle, tskNO_AFFINITY);
 
-  xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
-  // xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
+  // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
   // xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
 
 }
@@ -128,42 +153,59 @@ void loop() {
 //Task
 
 void RS485_task(void *pvParameters){
-  mod.begin(4800);    // Initialize software serial communication at 4800 baud rate
+  // mod.begin(4800);    // Initialize software serial communication at 4800 baud rate
+  Serial2.begin(4800);
 
   while(1){
-    mod.write(request, sizeof(request)); // Send the request frame to the soil sensor
-    vTaskdelay(10/portTICK_RATE_MS);
+    // mod.write(request, sizeof(request)); // Send the request frame to the soil sensor
+    Serial2.write(request, sizeof(request));
+    vTaskDelay(10/portTICK_RATE_MS);
     // Wait for the response from the sensor or timeout after 1 second
     unsigned long startTime = millis();
-    while (mod.available() < NUMBER_BYTES_RESPONES && millis() - startTime < 1000)
+    // while (mod.available() < NUMBER_BYTES_RESPONES && millis() - startTime < 1000)
+    while (Serial2.available() < NUMBER_BYTES_RESPONES && millis() - startTime < 1000)
     {
-      vTaskdelay(1/portTICK_RATE_MS);
+      vTaskDelay(1/portTICK_RATE_MS);
     }
     Serial.println(mod.available());
 
-    if (mod.available() >= NUMBER_BYTES_RESPONES){
+    // if (mod.available() >= NUMBER_BYTES_RESPONES){
+    if (Serial2.available() >= NUMBER_BYTES_RESPONES){
       // Read the response from the sensor
       byte index = 0;
-      while (mod.available() && index < NUMBER_BYTES_RESPONES){
-        sensorResponse[index] = mod.read();
+      // while (mod.available() && index < NUMBER_BYTES_RESPONES){
+      //   sensorResponse[index] = mod.read();
+      while (Serial2.available() && index < NUMBER_BYTES_RESPONES){
+        sensorResponse[index] = Serial2.read();
         Serial.print(sensorResponse[index], HEX);
         Serial.print(" ");
         index++;
       }
       Serial.println(" $End of Rx data");
       getSoilSensorParameter();
-      printSoilParameters();
+      printSoilParameters(SensorData);
     } else {
       Serial.println("Sensor timeout or incomplete frame");
     }
-    vTaskdelay(1000/portTICK_RATE_MS);
+    vTaskDelay(1000/portTICK_RATE_MS);
   }
 }
 
 void SHT25_task(void *pvParameters){
 
   while(1){
+    // if (xSemaphoreTake(I2C_mutex, portTICK_PERIOD_MS) == pdTRUE)
+    // {
+      Serial.print("Humidity    : ");
+      Serial.print(H_Sens.getHumidity());
+      Serial.println(" %RH");
+      Serial.print("Temperature : ");
+      Serial.print(H_Sens.getTemperature());
+      Serial.println(" C");
 
+    //   xSemaphoreGive(I2C_mutex);
+    // }
+    vTaskDelay(1000/portTICK_PERIOD_MS);
   }
 }
 
