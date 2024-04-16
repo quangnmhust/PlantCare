@@ -1,5 +1,5 @@
 #include <SoftwareSerial.h>
-
+#include <Arduino.h>
 #include "Wire.h"
 #include "String.h"
 
@@ -8,7 +8,15 @@
 SHT25 H_Sens;
 
 // SHT25 I2C address is 0x40(64)
-#define SHT25_Addr 0x40
+#define SHT25_ADDR    0x40
+#define is_RH         0x01
+#define is_TEMP       0x00
+//Commands
+#define T_NO_HOLD     0xF3 //trigger T measurement with no hold master
+#define RH_NO_HOLD    0xF5 //trigger RH measurement with no hold master
+#define W_UREG        0xE6 //write user registers
+#define R_UREG        0xE7 //read user registers
+#define SOFT_RESET    0xFE //soft reset
 
 //Define for RS485 sensor
 #define ADDRESS 0x02
@@ -55,6 +63,10 @@ typedef struct Data_manager{
 
 Data_t SensorData;
 // Data_t Data;
+
+float TEMP, RH, S_T, S_RH;
+byte T_Delay = 85;  //for 14 bit resolution
+byte RH_Delay = 29; //for 12 bit resolution 
 
 float convertBytesToFloat(byte hi, byte low){
   int intVal = (hi << 8) | low;
@@ -113,6 +125,69 @@ void printSoilParameters(Data_t Data){
   Serial.println(" ppm");
 }
 
+char SHT25_resetSensor(void){
+  Wire.beginTransmission(SHT25_ADDR);
+  Wire.write(SOFT_RESET);
+  char error = Wire.endTransmission();
+  if(error == 0){
+    Serial.println("Reset SHT25");
+    vTaskDelay(15/portTICK_PERIOD_MS);    //wait for sensor to reset
+    return 1;
+    } else {
+    return 0;
+    }
+}
+
+char SHT25_begin(void){
+  // Wire.begin();
+  if(SHT25_resetSensor()){
+    return 1;
+  }else{return 0;}
+}
+
+char SHT25_readBytes(char CMD, float &value, char length, char param){
+  unsigned char data[length];
+  Wire.beginTransmission(SHT25_ADDR);
+  Wire.write(CMD);
+  char error = Wire.endTransmission();
+  if(param){
+    vTaskDelay(RH_Delay/portTICK_PERIOD_MS);
+  }else{
+    vTaskDelay(T_Delay/portTICK_PERIOD_MS);
+    }
+
+  if(error == 0){
+    Wire.requestFrom(SHT25_ADDR, length);
+    while (!Wire.available());
+    for(char x=0; x<length; x++){
+      data[x] = Wire.read();
+      x++;
+    }
+    value = (float)((unsigned int)data[0]*((int)1<<8) + (unsigned int)(data[1]&((int)1<<2)));
+    return 1;
+  } else {
+    return 0;
+    }
+}
+
+float SHT25_getHumidity(void){
+  if(SHT25_readBytes(RH_NO_HOLD, S_RH, 3, is_RH)){
+    RH = -6.0 + 125.0*(S_RH/((long)1<<16));
+    return RH;
+  } else {
+    return 0;
+    }
+}
+
+float SHT25_getTemperature(void){
+  if(SHT25_readBytes(T_NO_HOLD, S_T, 3, is_TEMP)){
+    TEMP = -46.85 + 175.72*(S_T/((long)1<<16));
+    return TEMP;
+  } else {
+    return 0;
+    }
+}
+
 void printEnvParameters(Data_t Data){
   Serial.print("Độ ẩm env: ");
   Serial.print(Data.Env_Humi);
@@ -131,6 +206,8 @@ void BH1750_task(void *pvParameters); // Lux parameter
 
 void setup() {
   Serial.begin(9600); //init serial with computer
+  Wire.begin();
+  // SHT25_begin();
 
   I2C_mutex = xSemaphoreCreateMutex();  //Init I2C mutex
   if (I2C_mutex != NULL)
@@ -192,22 +269,19 @@ void RS485_task(void *pvParameters){
 }
 
 void SHT25_task(void *pvParameters){
+  Serial.println(pcTaskGetName(NULL));
+  SHT25_begin();
 
   while(1){
     if (xSemaphoreTake(I2C_mutex, portTICK_PERIOD_MS) == pdTRUE)
     {
-      Serial.println(pcTaskGetName(NULL));
-      // volatile unsigned int data[2];
-      vTaskDelay(500/portTICK_PERIOD_MS);
-      Wire.beginTransmission(SHT25_Addr);
-      Wire.write(0xF5);
-      Wire.endTransmission();
-      vTaskDelay(500/portTICK_PERIOD_MS);
-      Wire.requestFrom(SHT25_Addr, 2);
-      Serial.println(Wire.available());
+      SensorData.Env_temp = SHT25_getTemperature();
+      SensorData.Env_Humi = SHT25_getHumidity();
+      printEnvParameters(SensorData);
+
       xSemaphoreGive(I2C_mutex);
     }
-    vTaskDelay(1000/portTICK_PERIOD_MS);
+    vTaskDelay(10000/portTICK_PERIOD_MS);
   }
 }
 
