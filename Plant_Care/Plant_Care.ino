@@ -1,4 +1,8 @@
+#include <RTClib.h>
 #include <BH1750.h>
+#include "FS.h"
+#include "SD.h"
+#include "SPI.h"
 
 #include <SoftwareSerial.h>
 #include <Arduino.h>
@@ -6,6 +10,9 @@
 #include "String.h"
 
 BH1750 lightMeter;
+RTC_DS3231 rtc;
+
+char daysOfTheWeek[7][12] = {"Chu Nhat", "Thu Hai", "Thu Ba", "Thu Tu", "Thu Nam", "Thu Sau", "Thu Bay"};
 
 // SHT25 I2C address is 0x40(64)
 #define SHT25_ADDR    0x40
@@ -39,16 +46,17 @@ TaskHandle_t RS485_task_handle;
 TaskHandle_t SHT25_task_handle;
 TaskHandle_t BH1750_task_handle;
 TaskHandle_t DS3231_task_handle;
+TaskHandle_t SD_task_handle;
 
 SemaphoreHandle_t I2C_mutex = NULL;
 
 typedef struct Data_manager{
-  int Time_year;
-	int Time_month;
-	int Time_day;
-	int Time_hour;
-	int Time_min;
-	int Time_sec;
+  uint16_t Time_year;
+	uint8_t Time_month;
+	uint8_t Time_day;
+	uint8_t Time_hour;
+	uint8_t Time_min;
+	uint8_t Time_sec;
 
   float Soil_temp;
   float Soil_humi;
@@ -67,6 +75,9 @@ Data_t SensorData;
 float TEMP, RH, S_T, S_RH;
 byte T_Delay = 85;  //for 14 bit resolution
 byte RH_Delay = 29; //for 12 bit resolution 
+
+//RS485 Function
+/////////////////////////////////////////////////////////////////////
 
 float convertBytesToFloat(byte hi, byte low){
   int intVal = (hi << 8) | low;
@@ -124,6 +135,11 @@ void printSoilParameters(Data_t Data){
   Serial.print(Data.Soil_Kali);
   Serial.println(" ppm");
 }
+////////////////////////////////////////////////////////////////////
+
+
+//SHT25 Function
+/////////////////////////////////////////////////////////////////////
 
 char SHT25_resetSensor(void){
   Wire.beginTransmission(SHT25_ADDR);
@@ -197,8 +213,205 @@ void printEnvParameters(Data_t Data){
   Serial.print(Data.Env_temp);
   Serial.println(" oC");
 }
+/////////////////////////////////////////////////////////////////////
+
+//SD Function
+/////////////////////////////////////////////////////////////////////
+
+void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
+    Serial.printf("Listing directory: %s\n", dirname);
+
+    File root = fs.open(dirname);
+    if(!root){
+        Serial.println("Failed to open directory");
+        return;
+    }
+    if(!root.isDirectory()){
+        Serial.println("Not a directory");
+        return;
+    }
+
+    File file = root.openNextFile();
+    while(file){
+        if(file.isDirectory()){
+            Serial.print("  DIR : ");
+            Serial.println(file.name());
+            if(levels){
+                listDir(fs, file.path(), levels -1);
+            }
+        } else {
+            Serial.print("  FILE: ");
+            Serial.print(file.name());
+            Serial.print("  SIZE: ");
+            Serial.println(file.size());
+        }
+        file = root.openNextFile();
+    }
+}
+
+void createDir(fs::FS &fs, const char * path){
+    Serial.printf("Creating Dir: %s\n", path);
+    if(fs.mkdir(path)){
+        Serial.println("Dir created");
+    } else {
+        Serial.println("mkdir failed");
+    }
+}
+
+void removeDir(fs::FS &fs, const char * path){
+    Serial.printf("Removing Dir: %s\n", path);
+    if(fs.rmdir(path)){
+        Serial.println("Dir removed");
+    } else {
+        Serial.println("rmdir failed");
+    }
+}
+
+void readFile(fs::FS &fs, const char * path){
+    Serial.printf("Reading file: %s\n", path);
+
+    File file = fs.open(path);
+    if(!file){
+        Serial.println("Failed to open file for reading");
+        return;
+    }
+
+    Serial.print("Read from file: ");
+    while(file.available()){
+        Serial.write(file.read());
+    }
+    file.close();
+}
+
+void writeFile(fs::FS &fs, const char * path, const char * message){
+    Serial.printf("Writing file: %s\n", path);
+
+    // File file = fs.open(path, FILE_WRITE);
+    File file;
+    if (!SD.exists(path)) {//nếu fle này chưa được tạo => tạo ra rồi ghi
+      
+      file = fs.open(path, FILE_WRITE);
+    }
+    if(!file){
+        Serial.println("Failed to open file for writing");
+        return;
+    }
+    if(file.print(message)){
+        Serial.println("File written");
+    } else {
+        Serial.println("Write failed");
+    }
+    file.close();
+}
+
+void appendFile(fs::FS &fs, const char * path, const char * message){
+    Serial.printf("Appending to file: %s\n", path);
+
+    File file = fs.open(path, FILE_APPEND);
+    if(!file){
+        Serial.println("Failed to open file for appending");
+        return;
+    }
+    if(file.print(message)){
+        Serial.print("Message appended: ");
+        Serial.println(message);
+    } else {
+        Serial.println("Append failed");
+    }
+    file.close();
+}
+
+void renameFile(fs::FS &fs, const char * path1, const char * path2){
+    Serial.printf("Renaming file %s to %s\n", path1, path2);
+    if (fs.rename(path1, path2)) {
+        Serial.println("File renamed");
+    } else {
+        Serial.println("Rename failed");
+    }
+}
+
+void deleteFile(fs::FS &fs, const char * path){
+    Serial.printf("Deleting file: %s\n", path);
+    if(fs.remove(path)){
+        Serial.println("File deleted");
+    } else {
+        Serial.println("Delete failed");
+    }
+}
+
+void testFileIO(fs::FS &fs, const char * path){
+    File file = fs.open(path);
+    static uint8_t buf[512];
+    size_t len = 0;
+    uint32_t start = millis();
+    uint32_t end = start;
+    if(file){
+        len = file.size();
+        size_t flen = len;
+        start = millis();
+        while(len){
+            size_t toRead = len;
+            if(toRead > 512){
+                toRead = 512;
+            }
+            file.read(buf, toRead);
+            len -= toRead;
+        }
+        end = millis() - start;
+        Serial.printf("%u bytes read for %u ms\n", flen, end);
+        file.close();
+    } else {
+        Serial.println("Failed to open file for reading");
+    }
+
+
+    file = fs.open(path, FILE_WRITE);
+    if(!file){
+        Serial.println("Failed to open file for writing");
+        return;
+    }
+
+    size_t i;
+    start = millis();
+    for(i=0; i<2048; i++){
+        file.write(buf, 512);
+    }
+    end = millis() - start;
+    Serial.printf("%u bytes written for %u ms\n", 2048 * 512, end);
+    file.close();
+}
+
+int SD_start_check(void){
+  if(!SD.begin()){
+        Serial.println("Card Mount Failed");
+        return 0;
+    }
+    uint8_t cardType = SD.cardType();
+
+    if(cardType == CARD_NONE){
+        Serial.println("No SD card attached");
+        return 0;
+    }
+
+    Serial.print("SD Card Type: ");
+    if(cardType == CARD_MMC){
+        Serial.println("MMC");
+    } else if(cardType == CARD_SD){
+        Serial.println("SDSC");
+    } else if(cardType == CARD_SDHC){
+        Serial.println("SDHC");
+    } else {
+        Serial.println("UNKNOWN");
+    }
+
+    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+    Serial.printf("SD Card Size: %lluMB\n", cardSize);
+    return 1;
+}
+//////////////////////////////////////////////////////////////////////////////
 
 void DS3231_task(void *pvParameters); //Take time task
+void SD_task(void *pvParameters); //SD Task
 
 void RS485_task(void *pvParameters); // Soil parameters
 void SHT25_task(void *pvParameters); // Temp, humi parameters
@@ -215,11 +428,12 @@ void setup() {
     Serial.println("I2C_mutex created");
   }
 
-  // xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 2, &RS485_task_handle, tskNO_AFFINITY);
+  // xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 2, &DS3231_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(SD_task, "SD_Task", 1024 * 4, NULL, 2, &SD_task_handle, tskNO_AFFINITY);
 
   // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
   // xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
-  xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
+  // xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
 
 }
 
@@ -269,10 +483,11 @@ void RS485_task(void *pvParameters){
 }
 
 void SHT25_task(void *pvParameters){
-  Serial.println(pcTaskGetName(NULL));
+  
   SHT25_begin();
 
   while(1){
+    Serial.println(pcTaskGetName(NULL));
     if (xSemaphoreTake(I2C_mutex, portTICK_PERIOD_MS) == pdTRUE)
     {
       SensorData.Env_temp = SHT25_getTemperature();
@@ -281,14 +496,15 @@ void SHT25_task(void *pvParameters){
 
       xSemaphoreGive(I2C_mutex);
     }
-    vTaskDelay(10000/portTICK_PERIOD_MS);
+    vTaskDelay(5000/portTICK_PERIOD_MS);
   }
 }
 
 void BH1750_task(void *pvParameters){
-  Serial.println(pcTaskGetName(NULL));
+  
   lightMeter.begin();
   while(1){
+    Serial.println(pcTaskGetName(NULL));
     if(xSemaphoreTake(I2C_mutex, portTICK_PERIOD_MS) == pdTRUE){
       SensorData.Env_Lux = lightMeter.readLightLevel();
 
@@ -303,8 +519,63 @@ void BH1750_task(void *pvParameters){
 }
 
 void DS3231_task(void *pvParameters){
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    Serial.flush();
+    while (1){ vTaskDelay(10/portTICK_PERIOD_MS);}
+  }
 
+  if (rtc.lostPower()) {
+    Serial.println("RTC lost power, let's set the time!");
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // This line sets the RTC with an explicit date & time, for example to set
+    // January 21, 2014 at 3am you would call:
+    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+  }
   while(1){
+    Serial.println(pcTaskGetName(NULL));
+    if(xSemaphoreTake(I2C_mutex, portTICK_PERIOD_MS) == pdTRUE){
+      DateTime now = rtc.now();
+      
+      SensorData.Time_year = now.year();
+      SensorData.Time_month = now.month();
+      SensorData.Time_day = now.day();
+      SensorData.Time_hour = now.hour();
+      SensorData.Time_min = now.minute();
+      SensorData.Time_sec = now.second();
+
+      // Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
+      
+      Serial.print(SensorData.Time_year);
+      Serial.print('/');
+      Serial.print(SensorData.Time_month);
+      Serial.print('/');
+      Serial.print(SensorData.Time_day);
+      Serial.print(" (");
+      Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
+      Serial.print(") ");
+      Serial.print(SensorData.Time_hour, DEC);
+      Serial.print(':');
+      Serial.print(SensorData.Time_min, DEC);
+      Serial.print(':');
+      Serial.print(SensorData.Time_sec, DEC);
+      Serial.println();
+
+      xSemaphoreGive(I2C_mutex);
+    }
+    vTaskDelay(1000/portTICK_PERIOD_MS);
+  }
+}
+
+void SD_task(void *pvParameters){
+  SD_start_check();
+  writeFile(SD, "/hello.csv", "Hello,World,I,Am,PlanCare\n");
+  while(1){
+    Serial.println(pcTaskGetName(NULL));
+    if(SD_start_check()){
+      appendFile(SD, "/hello.csv", "Hello,World,I,Am,PlanCare2\n");
+      vTaskDelay(4000/portTICK_PERIOD_MS);
+    }
 
   }
 }
