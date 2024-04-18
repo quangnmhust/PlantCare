@@ -1,11 +1,11 @@
+#include <BH1750.h>
+
 #include <SoftwareSerial.h>
 #include <Arduino.h>
 #include "Wire.h"
 #include "String.h"
 
-#include<SHT25.h>
-
-SHT25 H_Sens;
+BH1750 lightMeter;
 
 // SHT25 I2C address is 0x40(64)
 #define SHT25_ADDR    0x40
@@ -218,8 +218,8 @@ void setup() {
   // xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 2, &RS485_task_handle, tskNO_AFFINITY);
 
   // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
-  xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
-  // xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
+  // xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
 
 }
 
@@ -286,9 +286,19 @@ void SHT25_task(void *pvParameters){
 }
 
 void BH1750_task(void *pvParameters){
-
+  Serial.println(pcTaskGetName(NULL));
+  lightMeter.begin();
   while(1){
+    if(xSemaphoreTake(I2C_mutex, portTICK_PERIOD_MS) == pdTRUE){
+      SensorData.Env_Lux = lightMeter.readLightLevel();
 
+      Serial.print("Lux env: ");
+      Serial.print(SensorData.Env_Lux);
+      Serial.println(" lux");
+
+      xSemaphoreGive(I2C_mutex);
+    }
+    vTaskDelay(5000/portTICK_PERIOD_MS);
   }
 }
 
