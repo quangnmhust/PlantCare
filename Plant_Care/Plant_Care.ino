@@ -18,7 +18,11 @@ char daysOfTheWeek[7][12] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
 char SD_Frame[1024];
 
-#define Period_minute_time 5
+#define uS_TO_M_FACTOR 1000000
+#define TIME_TO_SLEEP 10
+#define Period_minute_time 15
+
+RTC_DATA_ATTR int bootCount = 0;
 
 const char* ssid     = "Tom Bi";
 const char* password = "TBH123456";
@@ -408,6 +412,31 @@ void printLocalTime(){
 }
 //////////////////////////////////////////////////////////////////////////////
 
+/*
+Method to print the reason by which ESP32
+has been awaken from sleep
+*/
+void print_wakeup_reason(){
+  esp_sleep_wakeup_cause_t wakeup_reason;
+
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+
+  switch(wakeup_reason)
+  {
+    case ESP_SLEEP_WAKEUP_EXT0 : Serial.println("Wakeup caused by external signal using RTC_IO"); break;
+    case ESP_SLEEP_WAKEUP_EXT1 : Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
+    case ESP_SLEEP_WAKEUP_TIMER : Serial.println("Wakeup caused by timer"); break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD : Serial.println("Wakeup caused by touchpad"); break;
+    case ESP_SLEEP_WAKEUP_ULP : Serial.println("Wakeup caused by ULP program"); break;
+    default : Serial.printf("Wakeup was not caused by deep sleep: %d\n",wakeup_reason); break;
+  }
+}
+
+bool check_done_data = false;
+
+bool done_data(){
+  return check_done_data;
+}
 
 void DS3231_task(void *pvParameters); //Take time task
 void MQTT_task(void *pvParameters); //MQTT Task
@@ -469,15 +498,35 @@ void setup() {
   SD_start_check();
   writeFile(SD, "/data.csv", "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n");
 
+  //Increment boot number and print it every reboot
+  ++bootCount;
+  Serial.println("Boot number: " + String(bootCount));
 
-  xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 3, &DS3231_task_handle, tskNO_AFFINITY);
-    // xTaskCreatePinnedToCore(MQTT_task, "MQTT_Task", 1024 * 4, NULL, 5, &MQTT_task_handle, tskNO_AFFINITY);
+  //Print the wakeup reason for ESP32
+  print_wakeup_reason();
 
-    // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
-    xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
-    xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
-    xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 3, &Display_task_handle, tskNO_AFFINITY);
+  /*
+  First we configure the wake up source
+  We set our ESP32 to wake up every 5 seconds
+  */
+  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_M_FACTOR);
+  Serial.println("Setup ESP32 to sleep for every " + String(TIME_TO_SLEEP) + " Seconds");
 
+  // delay(5000);
+  xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 2, &DS3231_task_handle, tskNO_AFFINITY);
+  // xTaskCreatePinnedToCore(MQTT_task, "MQTT_Task", 1024 * 4, NULL, 5, &MQTT_task_handle, tskNO_AFFINITY);
+
+  // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 3, &Display_task_handle, tskNO_AFFINITY);
+
+  // delay(5000);
+
+  // if(done_data()){
+  //   Serial.println("Going to sleep now");
+  //   esp_deep_sleep_start();
+  // }
 }
 
 void loop() {
@@ -555,12 +604,14 @@ void DS3231_task(void *pvParameters){
       SensorData.Time_sec = now.second();
       xSemaphoreGive(I2C_semaphore);
     }
-    vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
+    // vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
+    vTaskDelay(1000/portTICK_PERIOD_MS);
   }
 }
 
 void Display_task(void *pvParameters){
   while(1){
+    vTaskDelay(1000/portTICK_PERIOD_MS);
     if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
       Serial.println(pcTaskGetName(NULL));
 
@@ -607,14 +658,14 @@ void Display_task(void *pvParameters){
       Serial.print("SD_Frame: ");
       Serial.print(SD_Frame);
 
-      if(SensorData.Time_day!=0){
+      if(!SensorData.Time_day == 0){
         appendFile(SD, "/data.csv", SD_Frame);
-        
+        check_done_data = true;
       }
 
       Serial.println("-----------------------------------------------------------");
       xSemaphoreGive(I2C_semaphore);
     }
-    vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
+    vTaskDelay(Period_minute_time*60000-1000/portTICK_PERIOD_MS);
   }
 }
