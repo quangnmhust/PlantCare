@@ -16,6 +16,10 @@ RTC_DS3231 rtc;
 
 char daysOfTheWeek[7][12] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
+char SD_Frame[1024];
+
+#define Period_minute_time 5
+
 const char* ssid     = "Tom Bi";
 const char* password = "TBH123456";
 
@@ -49,15 +53,16 @@ const int   daylightOffset_sec = 3600;
 const byte request[] = {ADDRESS, FUNCTION_CODE, INITIAL_ADDRESS_HI, INITIAL_ADDRESS_LO, DATA_LENGTH_HI, DATA_LENGTH_LO, CHECK_CODE_LO, CHECK_CODE_HI};
 byte sensorResponse[NUMBER_BYTES_RESPONES];
 
-SoftwareSerial mod(17, 16); // Software serial for RS485 communication rx21 tx22
-
 TaskHandle_t RS485_task_handle;
 TaskHandle_t SHT25_task_handle;
 TaskHandle_t BH1750_task_handle;
 TaskHandle_t DS3231_task_handle;
-TaskHandle_t SD_task_handle;
+TaskHandle_t MQTT_task_handle;
+TaskHandle_t Display_task_handle;
 
-SemaphoreHandle_t I2C_mutex = NULL;
+
+static StaticSemaphore_t xSemaphoreBuffer;
+SemaphoreHandle_t I2C_semaphore = NULL;
 
 typedef struct Data_manager{
   uint16_t Time_year;
@@ -78,12 +83,7 @@ typedef struct Data_manager{
   float Env_Lux;
 } Data_t;
 
-Data_t SensorData;
-// Data_t Data;
-
-float TEMP, RH, S_T, S_RH;
-byte T_Delay = 85;  //for 14 bit resolution
-byte RH_Delay = 29; //for 12 bit resolution 
+volatile Data_t SensorData;
 
 //RS485 Function
 /////////////////////////////////////////////////////////////////////
@@ -114,41 +114,15 @@ void getSoilSensorParameter(){
   SensorData.Soil_Kali = soilK;
 
 }
-
-void printSoilParameters(Data_t Data){
-  Serial.print("Độ ẩm: ");
-  Serial.print(Data.Soil_humi);
-  Serial.println(" %RH");
-
-  Serial.print("Nhiệt độ: ");
-  Serial.print(Data.Soil_temp);
-  Serial.println(" oC");
-
-  // Serial.print("Conductivity: ");
-  // Serial.print(soilConduct);
-  // Serial.println(" uS/cm");
-
-  Serial.print("pH hiện tại: ");
-  Serial.print(Data.Soil_pH);
-  Serial.println(" ");
-
-  Serial.print("Nito hiện tại: ");
-  Serial.print(Data.Soil_Nito);
-  Serial.println(" ppm");
-
-  Serial.print("Photpho hiện tại: ");
-  Serial.print(Data.Soil_Phosp);
-  Serial.println(" ppm");
-
-  Serial.print("Kali hiện tại: ");
-  Serial.print(Data.Soil_Kali);
-  Serial.println(" ppm");
-}
 ////////////////////////////////////////////////////////////////////
 
 
 //SHT25 Function
 /////////////////////////////////////////////////////////////////////
+
+float TEMP, RH, S_T, S_RH;
+byte T_Delay = 85;  //for 14 bit resolution
+byte RH_Delay = 29; //for 12 bit resolution 
 
 char SHT25_resetSensor(void){
   Wire.beginTransmission(SHT25_ADDR);
@@ -211,16 +185,6 @@ float SHT25_getTemperature(void){
   } else {
     return 0;
     }
-}
-
-void printEnvParameters(Data_t Data){
-  Serial.print("Độ ẩm env: ");
-  Serial.print(Data.Env_Humi);
-  Serial.println(" %RH");
-
-  Serial.print("Nhiệt độ env: ");
-  Serial.print(Data.Env_temp);
-  Serial.println(" oC");
 }
 /////////////////////////////////////////////////////////////////////
 
@@ -323,7 +287,7 @@ void appendFile(fs::FS &fs, const char * path, const char * message){
     }
     if(file.print(message)){
         Serial.print("Message appended: ");
-        Serial.println(message);
+        Serial.print(message);
     } else {
         Serial.println("Append failed");
     }
@@ -446,7 +410,7 @@ void printLocalTime(){
 
 
 void DS3231_task(void *pvParameters); //Take time task
-void SD_task(void *pvParameters); //SD Task
+void MQTT_task(void *pvParameters); //MQTT Task
 
 void RS485_task(void *pvParameters); // Soil parameters
 void SHT25_task(void *pvParameters); // Temp, humi parameters
@@ -455,105 +419,17 @@ void BH1750_task(void *pvParameters); // Lux parameter
 void setup() {
   Serial.begin(9600); //init serial with computer
   Wire.begin();
-  // SHT25_begin();
 
-  I2C_mutex = xSemaphoreCreateMutex();  //Init I2C mutex
-  if (I2C_mutex != NULL)
+  I2C_semaphore = xSemaphoreCreateCountingStatic( 4, 4, &xSemaphoreBuffer );  //Init I2C_semaphore
+  if (I2C_semaphore != NULL)
   {
-    Serial.println("I2C_mutex created");
+    Serial.print("I2C_semaphore created: ");
+    Serial.println(uxSemaphoreGetCount(I2C_semaphore));
   }
 
-  xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 2, &DS3231_task_handle, tskNO_AFFINITY);
-  // xTaskCreatePinnedToCore(SD_task, "SD_Task", 1024 * 4, NULL, 2, &SD_task_handle, tskNO_AFFINITY);
-
-  // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
-  // xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
-  // xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
-
-}
-
-void loop() {
-  // No thing in here because everything run in tasks
-}
-
-//Task
-
-void RS485_task(void *pvParameters){
-  // mod.begin(4800);    // Initialize software serial communication at 4800 baud rate
-  Serial2.begin(4800);
-
-  while(1){
-    // mod.write(request, sizeof(request)); // Send the request frame to the soil sensor
-    Serial2.write(request, sizeof(request));
-    vTaskDelay(10/portTICK_RATE_MS);
-    // Wait for the response from the sensor or timeout after 1 second
-    unsigned long startTime = millis();
-    // while (mod.available() < NUMBER_BYTES_RESPONES && millis() - startTime < 1000)
-    while (Serial2.available() < NUMBER_BYTES_RESPONES && millis() - startTime < 1000)
-    {
-      vTaskDelay(1/portTICK_RATE_MS);
-    }
-    Serial.println(mod.available());
-
-    // if (mod.available() >= NUMBER_BYTES_RESPONES){
-    if (Serial2.available() >= NUMBER_BYTES_RESPONES){
-      // Read the response from the sensor
-      byte index = 0;
-      // while (mod.available() && index < NUMBER_BYTES_RESPONES){
-      //   sensorResponse[index] = mod.read();
-      while (Serial2.available() && index < NUMBER_BYTES_RESPONES){
-        sensorResponse[index] = Serial2.read();
-        Serial.print(sensorResponse[index], HEX);
-        Serial.print(" ");
-        index++;
-      }
-      Serial.println(" $End of Rx data");
-      getSoilSensorParameter();
-      printSoilParameters(SensorData);
-    } else {
-      Serial.println("Sensor timeout or incomplete frame");
-    }
-    vTaskDelay(1000/portTICK_RATE_MS);
-  }
-}
-
-void SHT25_task(void *pvParameters){
-  
   SHT25_begin();
-
-  while(1){
-    Serial.println(pcTaskGetName(NULL));
-    if (xSemaphoreTake(I2C_mutex, portTICK_PERIOD_MS) == pdTRUE)
-    {
-      SensorData.Env_temp = SHT25_getTemperature();
-      SensorData.Env_Humi = SHT25_getHumidity();
-      printEnvParameters(SensorData);
-
-      xSemaphoreGive(I2C_mutex);
-    }
-    vTaskDelay(5000/portTICK_PERIOD_MS);
-  }
-}
-
-void BH1750_task(void *pvParameters){
-  
   lightMeter.begin();
-  while(1){
-    Serial.println(pcTaskGetName(NULL));
-    if(xSemaphoreTake(I2C_mutex, portTICK_PERIOD_MS) == pdTRUE){
-      SensorData.Env_Lux = lightMeter.readLightLevel();
 
-      Serial.print("Lux env: ");
-      Serial.print(SensorData.Env_Lux);
-      Serial.println(" lux");
-
-      xSemaphoreGive(I2C_mutex);
-    }
-    vTaskDelay(5000/portTICK_PERIOD_MS);
-  }
-}
-
-void DS3231_task(void *pvParameters){
   if (! rtc.begin()) {
     Serial.println("Couldn't find RTC");
     Serial.flush();
@@ -581,36 +457,94 @@ void DS3231_task(void *pvParameters){
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
 
-      struct tm timeinfo;
-      if(!getLocalTime(&timeinfo)){
-        Serial.println("Failed to obtain time");
-        return;
-      }
-    
-    Serial.print(timeinfo.tm_mday);
-    Serial.print("/");
-    Serial.print(timeinfo.tm_mon + 1);
-    Serial.print("/");
-    Serial.print(timeinfo.tm_year + 1900);
-    Serial.print(" ");
-    Serial.print(timeinfo.tm_hour, DEC);
-    Serial.print(":");
-    Serial.print(timeinfo.tm_min, DEC);
-    Serial.print(":");
-    Serial.println(timeinfo.tm_sec, DEC);
-    
-    // When time needs to be re-set on a previously configured device, the
-    // following line sets the RTC to the date & time this sketch was compiled
-    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-    // This line sets the RTC with an explicit date & time, for example to set
-    // January 21, 2014 at 3am you would call:
-    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+    struct tm timeinfo;
+    if(!getLocalTime(&timeinfo)){
+      Serial.println("Failed to obtain time");
+      return;
+    }
 
     rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
   }
+
+  SD_start_check();
+  writeFile(SD, "/data.csv", "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n");
+
+
+  xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 3, &DS3231_task_handle, tskNO_AFFINITY);
+    // xTaskCreatePinnedToCore(MQTT_task, "MQTT_Task", 1024 * 4, NULL, 5, &MQTT_task_handle, tskNO_AFFINITY);
+
+    // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
+    xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
+    xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
+    xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 3, &Display_task_handle, tskNO_AFFINITY);
+
+}
+
+void loop() {
+  // No thing in here because everything run in tasks
+}
+
+//Task
+
+void RS485_task(void *pvParameters){
+  Serial2.begin(4800);
+
   while(1){
-    Serial.println(pcTaskGetName(NULL));
-    if(xSemaphoreTake(I2C_mutex, portTICK_PERIOD_MS) == pdTRUE){
+    Serial2.write(request, sizeof(request));
+    vTaskDelay(10/portTICK_RATE_MS);
+    // Wait for the response from the sensor or timeout after 1 second
+    unsigned long startTime = millis();
+    while (Serial2.available() < NUMBER_BYTES_RESPONES && millis() - startTime < 1000)
+    {
+      vTaskDelay(1/portTICK_RATE_MS);
+    }
+    Serial.println(Serial2.available());
+
+    if (Serial2.available() >= NUMBER_BYTES_RESPONES){
+      // Read the response from the sensor
+      byte index = 0;
+      while (Serial2.available() && index < NUMBER_BYTES_RESPONES){
+        sensorResponse[index] = Serial2.read();
+        Serial.print(sensorResponse[index], HEX);
+        Serial.print(" ");
+        index++;
+      }
+      Serial.println(" $End of Rx data");
+      getSoilSensorParameter();
+    } else {
+      Serial.println("Sensor timeout or incomplete frame");
+    }
+    vTaskDelay(1000/portTICK_RATE_MS);
+  }
+}
+
+void SHT25_task(void *pvParameters){
+  while(1){
+    if (xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
+      Serial.println(pcTaskGetName(NULL));
+      SensorData.Env_temp = SHT25_getTemperature();
+      SensorData.Env_Humi = SHT25_getHumidity();
+      xSemaphoreGive(I2C_semaphore);
+    }
+    vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
+  }
+}
+
+void BH1750_task(void *pvParameters){
+  while(1){
+    if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
+      Serial.println(pcTaskGetName(NULL));
+      SensorData.Env_Lux = lightMeter.readLightLevel();
+      xSemaphoreGive(I2C_semaphore);
+    }
+    vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
+  }
+}
+
+void DS3231_task(void *pvParameters){
+  while(1){
+    if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
+      Serial.println(pcTaskGetName(NULL));
       DateTime now = rtc.now();
       
       SensorData.Time_year = now.year();
@@ -619,37 +553,68 @@ void DS3231_task(void *pvParameters){
       SensorData.Time_hour = now.hour();
       SensorData.Time_min = now.minute();
       SensorData.Time_sec = now.second();
-      
+      xSemaphoreGive(I2C_semaphore);
+    }
+    vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
+  }
+}
+
+void Display_task(void *pvParameters){
+  while(1){
+    if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
+      Serial.println(pcTaskGetName(NULL));
+
+      memset(SD_Frame, 0, 1024);
+      // "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n"
+      sprintf(SD_Frame, "%02d,%02d,%02d,%02d,%02d,%02d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", 
+        SensorData.Time_day,
+        SensorData.Time_month,
+        SensorData.Time_year,
+        SensorData.Time_hour,
+        SensorData.Time_min,
+        SensorData.Time_sec,
+        SensorData.Env_Lux,
+        SensorData.Env_temp,
+        SensorData.Env_Humi,
+        SensorData.Soil_temp,
+        SensorData.Soil_humi,
+        SensorData.Soil_pH,
+        SensorData.Soil_Nito,
+        SensorData.Soil_Phosp,
+        SensorData.Soil_Kali
+      );
+
       Serial.print(SensorData.Time_day);
       Serial.print('/');
       Serial.print(SensorData.Time_month);
       Serial.print('/');
       Serial.print(SensorData.Time_year);
-      Serial.print(" (");
-      Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
-      Serial.print(") ");
+      Serial.print(" ");
       Serial.print(SensorData.Time_hour, DEC);
       Serial.print(':');
       Serial.print(SensorData.Time_min, DEC);
       Serial.print(':');
-      Serial.print(SensorData.Time_sec, DEC);
-      Serial.println();
+      Serial.println(SensorData.Time_sec, DEC);
+      Serial.print("Lux env: ");
+      Serial.print(SensorData.Env_Lux);
+      Serial.println(" lux");
+      Serial.print("Temp env: ");
+      Serial.print(SensorData.Env_temp);
+      Serial.println(" oC");
+      Serial.print("Humi env: ");
+      Serial.print(SensorData.Env_Humi);
+      Serial.println(" %");
+      Serial.print("SD_Frame: ");
+      Serial.print(SD_Frame);
 
-      xSemaphoreGive(I2C_mutex);
+      if(SensorData.Time_day!=0){
+        appendFile(SD, "/data.csv", SD_Frame);
+        
+      }
+
+      Serial.println("-----------------------------------------------------------");
+      xSemaphoreGive(I2C_semaphore);
     }
-    vTaskDelay(1000/portTICK_PERIOD_MS);
-  }
-}
-
-void SD_task(void *pvParameters){
-  SD_start_check();
-  writeFile(SD, "/hello.csv", "Hello,World,I,Am,PlanCare\n");
-  while(1){
-    Serial.println(pcTaskGetName(NULL));
-    if(SD_start_check()){
-      appendFile(SD, "/hello.csv", "Hello,World,I,Am,PlanCare2\n");
-      vTaskDelay(4000/portTICK_PERIOD_MS);
-    }
-
+    vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
   }
 }
