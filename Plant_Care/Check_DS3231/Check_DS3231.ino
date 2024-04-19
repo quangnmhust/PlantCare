@@ -1,50 +1,98 @@
-/*
-  Rui Santos
-  Complete project details at https://RandomNerdTutorials.com/esp32-date-time-ntp-client-server-arduino/
-  
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files.
-  
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
-*/
-
+// Date and time functions using a DS3231 RTC connected via I2C and Wire lib
+#include "RTClib.h"
 #include <WiFi.h>
 #include "time.h"
 
-const char* ssid     = "minhquangng";
+RTC_DS3231 rtc;
+
+char daysOfTheWeek[7][12] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+
+const char* ssid     = "Tom Bi";
 const char* password = "TBH123456";
 
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 0;
+const long  gmtOffset_sec = 6*3600+5;
 const int   daylightOffset_sec = 3600;
 
-void setup(){
-  Serial.begin(115200);
+void setup () {
+  Serial.begin(9600);
 
-  // Connect to Wi-Fi
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    Serial.flush();
+    while (1) delay(10);
   }
-  Serial.println("");
-  Serial.println("WiFi connected.");
-  
-  // Init and get the time
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  printLocalTime();
 
-  //disconnect WiFi as it's no longer needed
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
+  if (rtc.lostPower()) {
+    Serial.println("RTC lost power, let's set the time!");
+    // Connect to Wi-Fi
+    Serial.print("Connecting to ");
+    Serial.println(ssid);
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println("");
+    Serial.println("WiFi connected.");
+    
+    // Init and get the time
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    printLocalTime();
+
+    //disconnect WiFi as it's no longer needed
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+
+      struct tm timeinfo;
+      if(!getLocalTime(&timeinfo)){
+        Serial.println("Failed to obtain time");
+        return;
+      }
+    
+    Serial.print(timeinfo.tm_mday);
+    Serial.print("/");
+    Serial.print(timeinfo.tm_mon + 1);
+    Serial.print("/");
+    Serial.print(timeinfo.tm_year + 1900);
+    Serial.print(" ");
+    Serial.print(timeinfo.tm_hour, DEC);
+    Serial.print(":");
+    Serial.print(timeinfo.tm_min, DEC);
+    Serial.print(":");
+    Serial.println(timeinfo.tm_sec, DEC);
+
+    rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
+  }
+
+  // When time needs to be re-set on a previously configured device, the
+  // following line sets the RTC to the date & time this sketch was compiled
+  // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  // This line sets the RTC with an explicit date & time, for example to set
+  // January 21, 2014 at 3am you would call:
+  // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
 }
 
-void loop(){
-  delay(1000);
-  printLocalTime();
+void loop () {
+    DateTime now = rtc.now();
+
+    
+    Serial.print(now.day(), DEC);
+    Serial.print('/');
+    Serial.print(now.month(), DEC);
+    Serial.print('/');
+    Serial.print(now.year(), DEC);
+    Serial.print(" (");
+    Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
+    Serial.print(") ");
+    Serial.print(now.hour(), DEC);
+    Serial.print(':');
+    Serial.print(now.minute(), DEC);
+    Serial.print(':');
+    Serial.print(now.second(), DEC);
+    Serial.println();
+
+    delay(1000);
 }
 
 void printLocalTime(){
@@ -53,31 +101,18 @@ void printLocalTime(){
     Serial.println("Failed to obtain time");
     return;
   }
-  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
-  Serial.print("Day of week: ");
-  Serial.println(&timeinfo, "%A");
-  Serial.print("Month: ");
-  Serial.println(&timeinfo, "%B");
-  Serial.print("Day of Month: ");
-  Serial.println(&timeinfo, "%d");
-  Serial.print("Year: ");
-  Serial.println(&timeinfo, "%Y");
-  Serial.print("Hour: ");
-  Serial.println(&timeinfo, "%H");
-  Serial.print("Hour (12 hour format): ");
-  Serial.println(&timeinfo, "%I");
-  Serial.print("Minute: ");
-  Serial.println(&timeinfo, "%M");
-  Serial.print("Second: ");
-  Serial.println(&timeinfo, "%S");
+  
+  
+  Serial.print(timeinfo.tm_mday);
+  Serial.print("/");
+  Serial.print(timeinfo.tm_mon + 1);
+  Serial.print("/");
+  Serial.print(timeinfo.tm_year + 1900);
+  Serial.print(" ");
+  Serial.print(timeinfo.tm_hour, DEC);
+  Serial.print(":");
+  Serial.print(timeinfo.tm_min, DEC);
+  Serial.print(":");
+  Serial.println(timeinfo.tm_sec, DEC);
 
-  Serial.println("Time variables");
-  char timeHour[3];
-  strftime(timeHour,3, "%H", &timeinfo);
-  Serial.println(timeHour);
-  char timeWeekDay[10];
-  strftime(timeWeekDay,10, "%A", &timeinfo);
-  Serial.println(timeWeekDay);
-  Serial.println();
 }
-1

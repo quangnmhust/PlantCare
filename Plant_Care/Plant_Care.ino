@@ -1,9 +1,11 @@
 #include <RTClib.h>
+#include "time.h"
 #include <BH1750.h>
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
 
+#include <WiFi.h>
 #include <SoftwareSerial.h>
 #include <Arduino.h>
 #include "Wire.h"
@@ -12,7 +14,14 @@
 BH1750 lightMeter;
 RTC_DS3231 rtc;
 
-char daysOfTheWeek[7][12] = {"Chu Nhat", "Thu Hai", "Thu Ba", "Thu Tu", "Thu Nam", "Thu Sau", "Thu Bay"};
+char daysOfTheWeek[7][12] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+
+const char* ssid     = "Tom Bi";
+const char* password = "TBH123456";
+
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 6*3600+5;
+const int   daylightOffset_sec = 3600;
 
 // SHT25 I2C address is 0x40(64)
 #define SHT25_ADDR    0x40
@@ -410,6 +419,32 @@ int SD_start_check(void){
 }
 //////////////////////////////////////////////////////////////////////////////
 
+//DS3231 Function
+/////////////////////////////////////////////////////////////////////
+void printLocalTime(){
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  
+  
+  Serial.print(timeinfo.tm_mday);
+  Serial.print("/");
+  Serial.print(timeinfo.tm_mon + 1);
+  Serial.print("/");
+  Serial.print(timeinfo.tm_year + 1900);
+  Serial.print(" ");
+  Serial.print(timeinfo.tm_hour, DEC);
+  Serial.print(":");
+  Serial.print(timeinfo.tm_min, DEC);
+  Serial.print(":");
+  Serial.println(timeinfo.tm_sec, DEC);
+
+}
+//////////////////////////////////////////////////////////////////////////////
+
+
 void DS3231_task(void *pvParameters); //Take time task
 void SD_task(void *pvParameters); //SD Task
 
@@ -428,8 +463,8 @@ void setup() {
     Serial.println("I2C_mutex created");
   }
 
-  // xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 2, &DS3231_task_handle, tskNO_AFFINITY);
-  xTaskCreatePinnedToCore(SD_task, "SD_Task", 1024 * 4, NULL, 2, &SD_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 2, &DS3231_task_handle, tskNO_AFFINITY);
+  // xTaskCreatePinnedToCore(SD_task, "SD_Task", 1024 * 4, NULL, 2, &SD_task_handle, tskNO_AFFINITY);
 
   // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
   // xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
@@ -527,10 +562,51 @@ void DS3231_task(void *pvParameters){
 
   if (rtc.lostPower()) {
     Serial.println("RTC lost power, let's set the time!");
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // Connect to Wi-Fi
+    Serial.print("Connecting to ");
+    Serial.println(ssid);
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println("");
+    Serial.println("WiFi connected.");
+    
+    // Init and get the time
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    printLocalTime();
+
+    //disconnect WiFi as it's no longer needed
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+
+      struct tm timeinfo;
+      if(!getLocalTime(&timeinfo)){
+        Serial.println("Failed to obtain time");
+        return;
+      }
+    
+    Serial.print(timeinfo.tm_mday);
+    Serial.print("/");
+    Serial.print(timeinfo.tm_mon + 1);
+    Serial.print("/");
+    Serial.print(timeinfo.tm_year + 1900);
+    Serial.print(" ");
+    Serial.print(timeinfo.tm_hour, DEC);
+    Serial.print(":");
+    Serial.print(timeinfo.tm_min, DEC);
+    Serial.print(":");
+    Serial.println(timeinfo.tm_sec, DEC);
+    
+    // When time needs to be re-set on a previously configured device, the
+    // following line sets the RTC to the date & time this sketch was compiled
+    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
     // This line sets the RTC with an explicit date & time, for example to set
     // January 21, 2014 at 3am you would call:
     // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+
+    rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
   }
   while(1){
     Serial.println(pcTaskGetName(NULL));
@@ -543,14 +619,12 @@ void DS3231_task(void *pvParameters){
       SensorData.Time_hour = now.hour();
       SensorData.Time_min = now.minute();
       SensorData.Time_sec = now.second();
-
-      // Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
       
-      Serial.print(SensorData.Time_year);
+      Serial.print(SensorData.Time_day);
       Serial.print('/');
       Serial.print(SensorData.Time_month);
       Serial.print('/');
-      Serial.print(SensorData.Time_day);
+      Serial.print(SensorData.Time_year);
       Serial.print(" (");
       Serial.print(daysOfTheWeek[now.dayOfTheWeek()]);
       Serial.print(") ");
