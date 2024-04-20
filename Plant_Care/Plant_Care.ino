@@ -1,3 +1,5 @@
+#include <ThingSpeak.h>
+
 #include <RTClib.h>
 #include "time.h"
 #include <BH1750.h>
@@ -20,12 +22,19 @@ char SD_Frame[1024];
 
 #define uS_TO_M_FACTOR 1000000
 #define TIME_TO_SLEEP 10
-#define Period_minute_time 15
+#define Period_minute_time 1
 
 RTC_DATA_ATTR int bootCount = 0;
 
-const char* ssid     = "Tom Bi";
-const char* password = "TBH123456";
+// kênh số mấy, Key để ghi(Write Key)
+const int myChannelNumber = 2515584;
+const char * myWriteAPIKey = "8TGOAVM92D494KS1";
+
+WiFiClient  client;
+// const char* ssid     = "minhquangng";
+// const char* password = "TBH123456";
+const char* ssid     = "Sanslab";
+const char* password = "sanslab@";
 
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 6*3600+5;
@@ -412,32 +421,6 @@ void printLocalTime(){
 }
 //////////////////////////////////////////////////////////////////////////////
 
-/*
-Method to print the reason by which ESP32
-has been awaken from sleep
-*/
-void print_wakeup_reason(){
-  esp_sleep_wakeup_cause_t wakeup_reason;
-
-  wakeup_reason = esp_sleep_get_wakeup_cause();
-
-  switch(wakeup_reason)
-  {
-    case ESP_SLEEP_WAKEUP_EXT0 : Serial.println("Wakeup caused by external signal using RTC_IO"); break;
-    case ESP_SLEEP_WAKEUP_EXT1 : Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
-    case ESP_SLEEP_WAKEUP_TIMER : Serial.println("Wakeup caused by timer"); break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD : Serial.println("Wakeup caused by touchpad"); break;
-    case ESP_SLEEP_WAKEUP_ULP : Serial.println("Wakeup caused by ULP program"); break;
-    default : Serial.printf("Wakeup was not caused by deep sleep: %d\n",wakeup_reason); break;
-  }
-}
-
-bool check_done_data = false;
-
-bool done_data(){
-  return check_done_data;
-}
-
 void DS3231_task(void *pvParameters); //Take time task
 void MQTT_task(void *pvParameters); //MQTT Task
 
@@ -498,35 +481,31 @@ void setup() {
   SD_start_check();
   writeFile(SD, "/data.csv", "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n");
 
-  //Increment boot number and print it every reboot
-  ++bootCount;
-  Serial.println("Boot number: " + String(bootCount));
+  // Connect to Wifi
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
 
-  //Print the wakeup reason for ESP32
-  print_wakeup_reason();
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+  WiFi.mode(WIFI_STA);
 
-  /*
-  First we configure the wake up source
-  We set our ESP32 to wake up every 5 seconds
-  */
-  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_M_FACTOR);
-  Serial.println("Setup ESP32 to sleep for every " + String(TIME_TO_SLEEP) + " Seconds");
+  ThingSpeak.begin(client);
 
-  // delay(5000);
   xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 2, &DS3231_task_handle, tskNO_AFFINITY);
   // xTaskCreatePinnedToCore(MQTT_task, "MQTT_Task", 1024 * 4, NULL, 5, &MQTT_task_handle, tskNO_AFFINITY);
 
-  // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 3, &Display_task_handle, tskNO_AFFINITY);
-
-  // delay(5000);
-
-  // if(done_data()){
-  //   Serial.println("Going to sleep now");
-  //   esp_deep_sleep_start();
-  // }
 }
 
 void loop() {
@@ -539,6 +518,7 @@ void RS485_task(void *pvParameters){
   Serial2.begin(4800);
 
   while(1){
+    // Serial.println(pcTaskGetName(NULL));
     Serial2.write(request, sizeof(request));
     vTaskDelay(10/portTICK_RATE_MS);
     // Wait for the response from the sensor or timeout after 1 second
@@ -547,30 +527,30 @@ void RS485_task(void *pvParameters){
     {
       vTaskDelay(1/portTICK_RATE_MS);
     }
-    Serial.println(Serial2.available());
+    // Serial.println(Serial2.available());
 
     if (Serial2.available() >= NUMBER_BYTES_RESPONES){
       // Read the response from the sensor
       byte index = 0;
       while (Serial2.available() && index < NUMBER_BYTES_RESPONES){
         sensorResponse[index] = Serial2.read();
-        Serial.print(sensorResponse[index], HEX);
-        Serial.print(" ");
+        // Serial.print(sensorResponse[index], HEX);
+        // Serial.print(" ");
         index++;
       }
-      Serial.println(" $End of Rx data");
+      // Serial.println(" $End of Rx data");
       getSoilSensorParameter();
     } else {
       Serial.println("Sensor timeout or incomplete frame");
     }
-    vTaskDelay(1000/portTICK_RATE_MS);
+    vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
   }
 }
 
 void SHT25_task(void *pvParameters){
   while(1){
     if (xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
-      Serial.println(pcTaskGetName(NULL));
+      // Serial.println(pcTaskGetName(NULL));
       SensorData.Env_temp = SHT25_getTemperature();
       SensorData.Env_Humi = SHT25_getHumidity();
       xSemaphoreGive(I2C_semaphore);
@@ -582,7 +562,7 @@ void SHT25_task(void *pvParameters){
 void BH1750_task(void *pvParameters){
   while(1){
     if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
-      Serial.println(pcTaskGetName(NULL));
+      // Serial.println(pcTaskGetName(NULL));
       SensorData.Env_Lux = lightMeter.readLightLevel();
       xSemaphoreGive(I2C_semaphore);
     }
@@ -593,7 +573,7 @@ void BH1750_task(void *pvParameters){
 void DS3231_task(void *pvParameters){
   while(1){
     if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
-      Serial.println(pcTaskGetName(NULL));
+      // Serial.println(pcTaskGetName(NULL));
       DateTime now = rtc.now();
       
       SensorData.Time_year = now.year();
@@ -613,7 +593,7 @@ void Display_task(void *pvParameters){
   while(1){
     vTaskDelay(1000/portTICK_PERIOD_MS);
     if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
-      Serial.println(pcTaskGetName(NULL));
+      // Serial.println(pcTaskGetName(NULL));
 
       memset(SD_Frame, 0, 1024);
       // "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n"
@@ -655,17 +635,46 @@ void Display_task(void *pvParameters){
       Serial.print("Humi env: ");
       Serial.print(SensorData.Env_Humi);
       Serial.println(" %");
+      Serial.print("Temp soil: ");
+      Serial.print(SensorData.Soil_temp);
+      Serial.println(" oC");
+      Serial.print("Humi soil: ");
+      Serial.print(SensorData.Soil_humi);
+      Serial.println(" %");
+      Serial.print("pH soil: ");
+      Serial.print(SensorData.Soil_pH);
+      Serial.println(" pH");
       Serial.print("SD_Frame: ");
       Serial.print(SD_Frame);
 
       if(!SensorData.Time_day == 0){
         appendFile(SD, "/data.csv", SD_Frame);
-        check_done_data = true;
+        // check_done_data = true;
+      }
+
+        // set the fields with the values
+      ThingSpeak.setField(1, SensorData.Env_Lux);
+      ThingSpeak.setField(2, SensorData.Env_temp);
+      ThingSpeak.setField(3, SensorData.Env_Humi);
+      ThingSpeak.setField(4, SensorData.Soil_humi);
+      ThingSpeak.setField(5, SensorData.Soil_pH);
+      ThingSpeak.setField(6, SensorData.Soil_Nito);
+      ThingSpeak.setField(7, SensorData.Soil_Phosp);
+      ThingSpeak.setField(8, SensorData.Soil_Kali);
+
+      // write to the ThingSpeak channel
+      int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+      if(x == 200){
+        Serial.println("Channel update successful.");
+      }
+      else{
+        Serial.println("Problem updating channel. HTTP error code " + String(x));
       }
 
       Serial.println("-----------------------------------------------------------");
       xSemaphoreGive(I2C_semaphore);
     }
     vTaskDelay(Period_minute_time*60000-1000/portTICK_PERIOD_MS);
+    // vTaskDelay(5000/portTICK_PERIOD_MS);
   }
 }

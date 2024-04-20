@@ -85,7 +85,7 @@ SoftwareSerial mod(2, 3); // Software serial for RS485 communication
 void setup()
 {
   Serial.begin(9600); // Initialize serial communication for debugging
-  mod.begin(4800);    // Initialize software serial communication at 4800 baud rate
+  Serial2.begin(4800);    // Initialize software serial communication at 4800 baud rate
 
 
 
@@ -99,26 +99,26 @@ void loop()
 {
  
   // Send the request frame to the soil sensor
-  mod.write(request, sizeof(request));
+  Serial2.write(request, sizeof(request));
   delay(10);
  
   // Wait for the response from the sensor or timeout after 1 second
   unsigned long startTime = millis();
-  while (mod.available() < NUMBER_BYTES_RESPONES && millis() - startTime < 1000)
+  while (Serial2.available() < NUMBER_BYTES_RESPONES && millis() - startTime < 1000)
   {
     delay(1);
   }
-Serial.println(mod.available());
+Serial.println(Serial2.available());
 
 
  
-  if (mod.available() >= NUMBER_BYTES_RESPONES) // If valid response received
+  if (Serial2.available() >= NUMBER_BYTES_RESPONES) // If valid response received
   {
     // Read the response from the sensor
     byte index = 0;
-    while (mod.available() && index < NUMBER_BYTES_RESPONES)
+    while (Serial2.available() && index < NUMBER_BYTES_RESPONES)
     {
-      sensorResponse[index] = mod.read();
+      sensorResponse[index] = Serial2.read();
       Serial.print(sensorResponse[index], HEX); // Print the received byte in HEX format
       Serial.print(" ");
       index++;
