@@ -66,7 +66,25 @@ const int   daylightOffset_sec = 3600;
 const byte request[] = {ADDRESS, FUNCTION_CODE, INITIAL_ADDRESS_HI, INITIAL_ADDRESS_LO, DATA_LENGTH_HI, DATA_LENGTH_LO, CHECK_CODE_LO, CHECK_CODE_HI};
 byte sensorResponse[NUMBER_BYTES_RESPONES];
 
+
+//Rain sensor
+#define RAIN_ADDRESS 0x01
+#define RAIN_FUNCTION_CODE 0x03
+#define RAIN_INITIAL_ADDRESS_HI 0x00
+#define RAIN_INITIAL_ADDRESS_LO 0x00
+#define RAIN_DATA_LENGTH_HI 0x00
+#define RAIN_DATA_LENGTH_LO 0x01
+#define RAIN_CHECK_CODE_LO 0x84
+#define RAIN_CHECK_CODE_HI 0x0A
+#define RAIN_NUMBER_BYTES_RESPONES 7
+// Request frame for the soil sensor
+const byte rainrequest[] = {RAIN_ADDRESS, RAIN_FUNCTION_CODE, RAIN_INITIAL_ADDRESS_HI, RAIN_INITIAL_ADDRESS_LO, RAIN_DATA_LENGTH_HI, RAIN_DATA_LENGTH_LO, RAIN_CHECK_CODE_LO, RAIN_CHECK_CODE_HI};
+byte rainsensorResponse[RAIN_NUMBER_BYTES_RESPONES];
+SoftwareSerial mod(25,26); // Software serial for RS485 communication
+
+
 TaskHandle_t RS485_task_handle;
+TaskHandle_t Rain_task_handle;
 TaskHandle_t SHT25_task_handle;
 TaskHandle_t BH1750_task_handle;
 TaskHandle_t DS3231_task_handle;
@@ -425,6 +443,7 @@ void DS3231_task(void *pvParameters); //Take time task
 void MQTT_task(void *pvParameters); //MQTT Task
 
 void RS485_task(void *pvParameters); // Soil parameters
+void Rain_task(void *pvParameters); // Rain parameters
 void SHT25_task(void *pvParameters); // Temp, humi parameters
 void BH1750_task(void *pvParameters); // Lux parameter
 
@@ -503,6 +522,7 @@ void setup() {
   // xTaskCreatePinnedToCore(MQTT_task, "MQTT_Task", 1024 * 4, NULL, 5, &MQTT_task_handle, tskNO_AFFINITY);
 
   xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(Rain_task, "Rain_Task", 1024 * 4, NULL, 3, &Rain_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 3, &Display_task_handle, tskNO_AFFINITY);
@@ -543,6 +563,52 @@ void RS485_task(void *pvParameters){
     } else {
       Serial.println("Sensor timeout or incomplete frame");
     }
+    vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
+  }
+}
+
+void Rain_task(void *pvParameters){
+  mod.begin(4800);
+
+  while(1){
+    // Serial.println(pcTaskGetName(NULL));
+    // Send the request frame to the soil sensor
+    mod.write(rainrequest, sizeof(rainrequest));
+    delay(10);
+  
+    // Wait for the response from the sensor or timeout after 1 second
+    unsigned long startTime = millis();
+    while (mod.available() < 9 && millis() - startTime < 1000)
+    {
+      delay(1);
+    }
+  
+    if (mod.available() >= RAIN_NUMBER_BYTES_RESPONES) // If valid response received
+    {
+      // Read the response from the sensor
+      byte index = 0;
+      while (mod.available() && index < RAIN_NUMBER_BYTES_RESPONES)
+      {
+        rainsensorResponse[index] = mod.read();
+        Serial.print(rainsensorResponse[index], HEX); // Print the received byte in HEX format
+        Serial.print(" ");
+        index++;
+      }
+      Serial.println(" $End of Rx data");
+  
+      // Parse and calculate the Rainfall value
+      int Sensor_Int = int(rainsensorResponse[3] << 8 | rainsensorResponse[4]);
+      float Senor_Float = Sensor_Int / 10.0;
+  
+      Serial.print("Float result: ");
+      Serial.println(Senor_Float);
+    }
+    else
+    {
+      // Print error message if no valid response received
+      Serial.println("Sensor timeout or incomplete frame");
+    }
+    // delay(1000);
     vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
   }
 }
