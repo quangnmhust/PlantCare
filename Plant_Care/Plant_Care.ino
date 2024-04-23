@@ -1,4 +1,6 @@
 #include <ThingSpeak.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 #include <RTClib.h>
 #include "time.h"
@@ -12,6 +14,7 @@
 #include <Arduino.h>
 #include "Wire.h"
 #include "String.h"
+#include "EEPROM.h"
 
 BH1750 lightMeter;
 RTC_DS3231 rtc;
@@ -24,7 +27,20 @@ char SD_Frame[1024];
 #define TIME_TO_SLEEP 10
 #define Period_minute_time 1
 
-RTC_DATA_ATTR int bootCount = 0;
+int LED_BUILTIN = 2;
+
+//set length of char string
+#define LENGTH(x) (strlen(x) + 1)
+#define EEPROM_SIZE 200
+//--------------------------------------------------
+//WiFi credential reset pin (Boot button on ESP32)
+#define WiFi_rst 0
+unsigned long rst_millis;
+//--------------------------------------------------
+//variable to store ssid and password
+String ssid;
+String pss;
+//--------------------------------------------------
 
 // kênh số mấy, Key để ghi(Write Key)
 const int myChannelNumber = 2515584;
@@ -33,8 +49,8 @@ const char * myWriteAPIKey = "8TGOAVM92D494KS1";
 WiFiClient  client;
 // const char* ssid     = "minhquangng";
 // const char* password = "TBH123456";
-const char* ssid     = "Sanslab";
-const char* password = "sanslab@";
+// const char* ssid     = "Sanslab";
+// const char* password = "sanslab@";
 
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 6*3600+5;
@@ -82,6 +98,11 @@ const byte rainrequest[] = {RAIN_ADDRESS, RAIN_FUNCTION_CODE, RAIN_INITIAL_ADDRE
 byte rainsensorResponse[RAIN_NUMBER_BYTES_RESPONES];
 SoftwareSerial mod(25,26); // Software serial for RS485 communication
 
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_ADDRESS 0x3D ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 TaskHandle_t RS485_task_handle;
 TaskHandle_t Rain_task_handle;
@@ -439,6 +460,26 @@ void printLocalTime(){
 }
 //////////////////////////////////////////////////////////////////////////////
 
+void writeStringToFlash(const char* toStore, int startAddr) {
+  int i = 0;
+  for (; i < LENGTH(toStore); i++) {
+    EEPROM.write(startAddr + i, toStore[i]);
+  }
+  EEPROM.write(startAddr + i, '\0');
+  EEPROM.commit();
+}
+
+
+String readStringFromFlash(int startAddr) {
+  char in[128]; // char array of size 128 for reading the stored data 
+  int i = 0;
+  for (; i < 128; i++) {
+    in[i] = EEPROM.read(startAddr + i);
+  }
+  return String(in);
+}
+
+
 void DS3231_task(void *pvParameters); //Take time task
 void MQTT_task(void *pvParameters); //MQTT Task
 
@@ -458,6 +499,91 @@ void setup() {
     Serial.println(uxSemaphoreGetCount(I2C_semaphore));
   }
 
+  // if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
+  //   Serial.println(F("SSD1306 allocation failed"));
+  // }
+  // delay(2000);
+  // display.clearDisplay();
+  // display.setTextSize(1);
+  // display.setTextColor(WHITE);
+
+  pinMode (LED_BUILTIN, OUTPUT);
+  pinMode(WiFi_rst, INPUT);
+  if (!EEPROM.begin(EEPROM_SIZE)) { //Init EEPROM
+    Serial.println("failed to init EEPROM");
+    delay(1000);
+  }
+  //------------------------------------------------
+  else
+  {
+    //Read SSID stored at address 0
+    ssid = readStringFromFlash(0);
+    Serial.print("SSID = ");
+    Serial.println(ssid);
+    // Read Password stored at address 40
+    pss = readStringFromFlash(40);
+    Serial.print("psss = ");
+    Serial.println(pss);
+  }
+  //------------------------------------------------
+  WiFi.begin(ssid.c_str(), pss.c_str());
+  delay(3000);
+  //------------------------------------------------
+  //if WiFi is not connected
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    //Init WiFi as Station, start SmartConfig
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.beginSmartConfig();
+    //----------------------------------------------
+    //Wait for SmartConfig packet from mobile
+    Serial.println("Waiting for SmartConfig.");
+    // display.setCursor(0,0);
+    // // Display static text
+    // display.println("Waiting for SmartConfig.");
+    // display.display();
+    while (!WiFi.smartConfigDone()) {
+      delay(500);
+      Serial.print(".");
+    }
+    //----------------------------------------------
+    Serial.println("");
+    Serial.println("SmartConfig received.");
+    //----------------------------------------------
+    //Wait for WiFi to connect to AP
+    Serial.println("Waiting for WiFi");
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(125);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(125);
+    }
+    //----------------------------------------------
+    Serial.println("WiFi Connected.");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+    //----------------------------------------------
+    //read the connected WiFi SSID and password
+    ssid = WiFi.SSID();
+    pss = WiFi.psk();
+    //----------------------------------------------
+    Serial.print("SSID:");
+    Serial.println(ssid);
+    Serial.print("PASS:");
+    Serial.println(pss);
+    Serial.println("Storing SSID & PASSWORD in EEPROM");
+    //----------------------------------------------
+    //store the ssid at address 0
+    writeStringToFlash(ssid.c_str(), 0);
+    //store the password at address 40
+    writeStringToFlash(pss.c_str(), 40);
+    //----------------------------------------------
+    Serial.println("OK");
+  } else {Serial.println("WiFi Connected");}
+  //------------------------------------------------
+
   SHT25_begin();
   lightMeter.begin();
 
@@ -470,23 +596,33 @@ void setup() {
   if (rtc.lostPower()) {
     Serial.println("RTC lost power, let's set the time!");
     // Connect to Wi-Fi
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
+    if (!EEPROM.begin(EEPROM_SIZE)) { //Init EEPROM
+    Serial.println("failed to init EEPROM");
+    delay(1000);
     }
-    Serial.println("");
-    Serial.println("WiFi connected.");
+    //------------------------------------------------
+    else
+    {
+      //Read SSID stored at address 0
+      ssid = readStringFromFlash(0);
+      Serial.print("SSID = ");
+      Serial.println(ssid);
+      // Read Password stored at address 40
+      pss = readStringFromFlash(40);
+      Serial.print("psss = ");
+      Serial.println(pss);
+    }
+    //------------------------------------------------
+    WiFi.begin(ssid.c_str(), pss.c_str());
+    delay(3000);
     
     // Init and get the time
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     printLocalTime();
 
-    //disconnect WiFi as it's no longer needed
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    // //disconnect WiFi as it's no longer needed
+    // WiFi.disconnect(true);
+    // WiFi.mode(WIFI_OFF);
 
     struct tm timeinfo;
     if(!getLocalTime(&timeinfo)){
@@ -500,21 +636,21 @@ void setup() {
   SD_start_check();
   writeFile(SD, "/data.csv", "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n");
 
-  // Connect to Wifi
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
+  // // Connect to Wifi
+  // Serial.println();
+  // Serial.print("Connecting to ");
+  // Serial.println(ssid);
+  // WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-  WiFi.mode(WIFI_STA);
+  // while (WiFi.status() != WL_CONNECTED)
+  // {
+  //   delay(500);
+  //   Serial.print(".");
+  // }
+  // Serial.println("WiFi connected");
+  // Serial.println("IP address: ");
+  // Serial.println(WiFi.localIP());
+  // WiFi.mode(WIFI_STA);
 
   ThingSpeak.begin(client);
 
@@ -522,7 +658,7 @@ void setup() {
   // xTaskCreatePinnedToCore(MQTT_task, "MQTT_Task", 1024 * 4, NULL, 5, &MQTT_task_handle, tskNO_AFFINITY);
 
   xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
-  xTaskCreatePinnedToCore(Rain_task, "Rain_Task", 1024 * 4, NULL, 3, &Rain_task_handle, tskNO_AFFINITY);
+  // xTaskCreatePinnedToCore(Rain_task, "Rain_Task", 1024 * 4, NULL, 3, &Rain_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 3, &Display_task_handle, tskNO_AFFINITY);
@@ -530,6 +666,30 @@ void setup() {
 
 void loop() {
   // No thing in here because everything run in tasks
+  rst_millis = millis();
+  while (digitalRead(WiFi_rst) == LOW) {
+    // Wait till boot button is pressed 
+  }
+  //----------------------------------------------
+  // check the button press time if it is greater 
+  //than 3sec clear wifi cred and restart ESP 
+  if (millis() - rst_millis >= 3000) {
+    int reset_count = 0;
+    while(reset_count > 2){
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(125);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(125);
+      reset_count++;
+    }
+    Serial.println("Reseting the WiFi credentials");
+    writeStringToFlash("", 0); // Reset the SSID
+    writeStringToFlash("", 40); // Reset the Password
+    Serial.println("Wifi credentials erased");
+    Serial.println("Restarting the ESP");
+    delay(500);
+    ESP.restart();
+  }
 }
 
 //Task
@@ -729,12 +889,12 @@ void Display_task(void *pvParameters){
       ThingSpeak.setField(8, SensorData.Soil_Kali);
 
       // write to the ThingSpeak channel
-      int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
-      if(x == 200){
+      int x1 = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+      if(x1 == 200){
         Serial.println("Channel update successful.");
       }
       else{
-        Serial.println("Problem updating channel. HTTP error code " + String(x));
+        Serial.println("Problem updating channel. HTTP error code " + String(x1));
       }
 
       Serial.println("-----------------------------------------------------------");
