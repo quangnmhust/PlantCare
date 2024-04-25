@@ -4,7 +4,7 @@
 #include <Adafruit_SSD1306.h>
 #include <RTClib.h>
 #include <BH1750.h>
-#include<SHT25.h>
+#include <SHT25.h>
 
 #include "time.h"
 #include "FS.h"
@@ -37,10 +37,10 @@
 #define CHECK_CODE_HI 0xFE
 #define NUMBER_BYTES_RESPONES 25
 
-// const char* ssid = "Tdnt";
-// const char* password =  "nhatthang642002";
-String ssid = "";
-String pss =  "";
+const char* ssid = "Tom Bi";
+const char* password =  "TBH123456";
+// String ssid = "";
+// String pss =  "";
 const int myChannelNumber = 2515584;
 const char * myWriteAPIKey = "8TGOAVM92D494KS1";
 const char* mqttServer = "sanslab.ddns.net";
@@ -48,21 +48,27 @@ const int mqttPort = 1883;
 const char* mqttUser = "admin";
 const char* mqttPassword = "123";
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 6*3600+5;
+const long  gmtOffset_sec = 6*3600;
 const int   daylightOffset_sec = 3600;
 
 TaskHandle_t RS485_task_handle;
 TaskHandle_t SHT25_task_handle;
 TaskHandle_t BH1750_task_handle;
 TaskHandle_t DS3231_task_handle;
+
 TaskHandle_t MQTT_task_handle;
+
 TaskHandle_t Display_task_handle;
 TaskHandle_t Displaytime_task_handle;
+
 TaskHandle_t Control_task_handle;
+TaskHandle_t getData_task_handle;
 
 static StaticSemaphore_t xSemaphoreBuffer;
 SemaphoreHandle_t I2C_semaphore = NULL;
 SemaphoreHandle_t MQTT_semaphore = NULL;
+
+QueueHandle_t data_queue = NULL;
 
 typedef struct Data_manager{
   uint16_t Time_year;
@@ -96,9 +102,11 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 const byte request[] = {ADDRESS, FUNCTION_CODE, INITIAL_ADDRESS_HI, INITIAL_ADDRESS_LO, DATA_LENGTH_HI, DATA_LENGTH_LO, CHECK_CODE_LO, CHECK_CODE_HI};
 byte sensorResponse[NUMBER_BYTES_RESPONES];
-char SD_Frame[1024];
-char MQTT_Frame[1024];
-char time_buff[20];
+
+char SD_Frame_buff[126];
+char SD_Frame[126];
+// char MQTT_Frame[1024];
+char time_buff[64];
 RTC_DATA_ATTR int errorCount = 0;
 // String ssid, pss;
 
@@ -106,7 +114,6 @@ unsigned long rst_millis;
 
 float convertBytesToFloat(byte hi, byte low){
   int intVal = (hi << 8) | low;
-  //Serial.println(intVal);
   return (float)intVal/10.0;
 }
 
@@ -119,7 +126,8 @@ void writeFile(fs::FS &fs, const char * path, const char * message){
         return;
     }
     if(file.print(message)){
-        Serial.println("File written");
+      Serial.print("File written: ");
+        Serial.println(message);
     } else {
         Serial.println("Write failed");
     }
@@ -135,7 +143,8 @@ void appendFile(fs::FS &fs, const char * path, const char * message){
         return;
     }
     if(file.print(message)){
-        Serial.println("Message appended");
+        Serial.print("Message appended: ");
+        Serial.println(message);
     } else {
         Serial.println("Append failed");
     }
@@ -162,11 +171,9 @@ String readStringFromFlash(int startAddr) {
 
 void getSoilSensorParameter(){
   float soilHumi, soilTemp, soilPH, soilN,soilP,soilK;
-  // float soilConduct;
 
   soilHumi = convertBytesToFloat(sensorResponse[3], sensorResponse[4]);
   soilTemp = convertBytesToFloat(sensorResponse[5], sensorResponse[6]);
-  // soilConduct = convertBytesToFloat(sensorResponse[7], sensorResponse[8]);
   soilPH = convertBytesToFloat(sensorResponse[9], sensorResponse[10]);
   soilN = convertBytesToFloat(sensorResponse[11], sensorResponse[12]);
   soilP = convertBytesToFloat(sensorResponse[13], sensorResponse[14]);
@@ -180,95 +187,82 @@ void getSoilSensorParameter(){
   SensorData.Soil_Kali = soilK;
 
 }
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.println("Topic: "+String(topic));
+  display.setCursor(0,10);
+  display.println("Message:");
+  display.display();
+  for (int i = 0; i < length; i++) {
+    int a,b;
+    a= (i%21)*6;
+    b= (i/21)*10+20;
+    display.setCursor(a,b);
+    display.println((char)payload[i]);
+    display.display();
+  }
+}
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void DS3231_task(void *pvParameters); //Take time task
 void Displaytime_task(void *pvParameters);
-void MQTT_task(void *pvParameters); //MQTT Task
+void MQTT_task(void *pvParameters);
 void RS485_task(void *pvParameters); // Soil parameters
 void SHT25_task(void *pvParameters); // Temp, humi parameters
 void BH1750_task(void *pvParameters); // Lux parameter
 void Control_task(void *pvParameters);
+void getData_task(void *pvParameters);
 
-void setup() {
-  Serial.begin(9600);
-  Wire.begin();
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
-    Serial.println(F("SSD1306 allocation failed"));
-  }
-  delay(1000);
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  I2C_semaphore = xSemaphoreCreateCountingStatic( 4, 4, &xSemaphoreBuffer );
-  if (I2C_semaphore != NULL)
-  {
+void esp_sd_start(void){
+  if(!SD.begin()){
+    display.clearDisplay();
     display.setCursor(0,0);
-    display.println("I2C_semaphore created");
-    display.setCursor(0,10);
-    display.println(4);
+    display.println("Card Mount Failed");
     display.display();
-  }
-  MQTT_semaphore = xSemaphoreCreateMutex();
-  if (MQTT_semaphore != NULL)
-  {
+  } else {
+    uint8_t cardType = SD.cardType();
+
+    if(cardType == CARD_NONE){
+      display.clearDisplay();
+      display.setCursor(0,0);
+      display.println("No SD card attached");
+      display.display();
+    }
+
+    display.clearDisplay();
+    display.setCursor(0,0);
+    display.println("SD Card Type:");
+    if(cardType == CARD_MMC){
+      display.setCursor(0,10);
+      display.println("MMC");
+      display.display();
+    } else if(cardType == CARD_SD){
+      display.setCursor(0,10);
+      display.println("SDSC");
+      display.display();
+    } else if(cardType == CARD_SDHC){
+        display.setCursor(0,10);
+        display.println("SDHC");
+        display.display();
+    } else {
+      display.setCursor(0,10);
+      display.println("UNKNOWN");
+      display.display();
+    }
+
+    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
     display.setCursor(0,20);
-    display.println("MQTT_semaphore created");
+    display.println("SD Card Size:");
+    display.setCursor(0,30);
+    display.println(cardSize + String(" MB"));
     display.display();
     delay(1000);
-    display.clearDisplay();
   }
-  // WiFi.begin(ssid, password);
- 
-  // while (WiFi.status() != WL_CONNECTED) {
-  //   delay(500);
-  //   Serial.println("Connecting to WiFi..");
-  // }
- 
-  // Serial.println("Connected to the WiFi network");
- 
-  // client.setServer(mqttServer, mqttPort);
- 
-  // while (!client.connected()) {
-  //   Serial.println("Connecting to MQTT...");
- 
-  //   if (client.connect("ESP32Client", mqttUser, mqttPassword )) {
- 
-  //     Serial.println("connected");
- 
-  //   } else {
- 
-  //     Serial.print("failed with state ");
-  //     Serial.println(client.state());
-  //     delay(2000);
- 
-  //   }
-  // }
+}
 
-  // if(!SD.begin()){
-  //     Serial.println("Card Mount Failed");
-  // } else {
-  //   uint8_t cardType = SD.cardType();
-
-  //   if(cardType == CARD_NONE){
-  //     Serial.println("No SD card attached");
-  //   }
-
-  //   Serial.print("SD Card Type: ");
-  //   if(cardType == CARD_MMC){
-  //       Serial.println("MMC");
-  //   } else if(cardType == CARD_SD){
-  //       Serial.println("SDSC");
-  //   } else if(cardType == CARD_SDHC){
-  //       Serial.println("SDHC");
-  //   } else {
-  //       Serial.println("UNKNOWN");
-  //   }
-
-  //   uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-  //   Serial.printf("SD Card Size: %lluMB\n", cardSize);
-  // }
-
+void esp_rtc_start(void){
   if (! rtc.begin()) {
 
     display.clearDisplay();
@@ -279,45 +273,164 @@ void setup() {
    if (rtc.lostPower()) {
       display.clearDisplay();
       display.setCursor(0,0);
-      display.println("RTC lost power, let's set the time!");
-      // WiFi.begin(ssid, password);
+      display.println("RTC lost power");
+      display.display();
+      WiFi.begin(ssid, password);
       
       // Init and get the time
+      while (WiFi.status() != WL_CONNECTED) {
+        display.setCursor(0,10);
+        Serial.println("Connecting to WiFi  ");
+        display.display();
+        delay(166);
+        display.setCursor(0,10);
+        Serial.println("Connecting to WiFi. ");
+        display.display();
+        delay(166);
+        display.setCursor(0,10);
+        Serial.println("Connecting to WiFi..");
+        display.display();
+        delay(166);
+      }
       configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
       struct tm timeinfo;
       if(!getLocalTime(&timeinfo)){
         Serial.println("Failed to obtain time");
-        // return;
+        rtc.adjust(DateTime(0, 0, 0, 0, 0, 0));
       }
       rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
+    } else {
+      display.clearDisplay();
+      display.setCursor(0,0);
+      display.println("RTC ready!");
+      display.display();
+      delay(1000);
     }
   }
+}
 
-  H_Sens.begin();
+void esp_connect_mqtt(void){
+  client.setServer(mqttServer, mqttPort);
+  client.setCallback(callback);
+
+  while (!client.connected()) {
+    display.clearDisplay();
+    display.setCursor(0,0);
+    display.println("Connecting to MQTT...");
+    display.display();
+
+    if (client.connect("ESP32Client", mqttUser, mqttPassword)) {
+      display.setCursor(0,20);
+      display.println("Connected!");
+      display.display();
+      // client.publish("modelParam","hello world");
+    } else {
+      display.setCursor(0,30);
+      display.println("failed, rc=" + String(client.state()));
+      display.setCursor(0,50);
+      display.println("Try again in 2 seconds");
+      display.display();
+      delay(2000);
+    }
+  }
+  // client.subscribe("modelParam");
+}
+
+void esp_connect_wifi(void){
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    display.setCursor(0,0);
+    display.fillRect(0, 0, SCREEN_WIDTH, 9, BLACK);
+    display.println("Connecting to WiFi");
+    display.display();
+    display.setCursor(0,20);
+    display.println("SSID:"+String(ssid));
+    display.setCursor(0,30);
+    display.println("PASS:"+String(password));
+    display.display();
+    delay(125);
+    display.setCursor(0,0);
+    display.fillRect(0, 0, SCREEN_WIDTH, 9, BLACK);
+    display.println("Connecting to WiFi.");
+    display.display();
+    delay(125);
+    display.setCursor(0,0);
+    display.fillRect(0, 0, SCREEN_WIDTH, 9, BLACK);
+    display.println("Connecting to WiFi..");
+    display.display();
+    delay(125);
+    display.setCursor(0,0);
+    display.fillRect(0, 0, SCREEN_WIDTH, 9, BLACK);
+    display.println("Connecting to WiFi...");
+    display.display();
+    delay(125);
+  }
+ 
+  display.clearDisplay();
+  display.setCursor(0,0);
+  display.println("Connected to the WiFinetwork");
+  display.display();
+  delay(1000);
+}
+
+void esp_start(void){
+  Serial.begin(9600);
+  Wire.begin();
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
+    Serial.println(F("SSD1306 allocation failed"));
+  }
+  delay(1000);
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.clearDisplay();
+
+  esp_connect_wifi();
+  esp_connect_mqtt();
+  esp_sd_start();
+  esp_rtc_start();
+}
+
+void setup() {
+  esp_start();
+
+  I2C_semaphore = xSemaphoreCreateCountingStatic( 4, 4, &xSemaphoreBuffer );
+  if (I2C_semaphore != NULL)
+  {
+    display.clearDisplay();
+    display.setCursor(0,0);
+    display.println("I2C_semaphore created");
+    display.display();
+  }
+  MQTT_semaphore = xSemaphoreCreateMutex();
+  if (MQTT_semaphore != NULL)
+  {
+    display.setCursor(0,20);
+    display.println("MQTT_semaph created");
+    display.display();
+  }
+
+  data_queue = xQueueCreate(20, sizeof(Data_t));
+  if (data_queue != NULL)
+  {
+    display.setCursor(0,40);
+    display.println("Data_queue created");
+    display.display();
+    delay(1000);
+    display.clearDisplay();
+  }
+
+  // H_Sens.begin();
   // lightMeter.begin();
   // writeFile(SD, "/data.csv", "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n");
   // ThingSpeak.begin(mqttclient);
 
-  xTaskCreatePinnedToCore(Control_task, "Control_task", 1024 * 4, NULL, 1, &Control_task_handle, tskNO_AFFINITY);
+  // xTaskCreatePinnedToCore(Control_task, "Control_task", 1024 * 4, NULL, 1, &Control_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 3, &DS3231_task_handle, tskNO_AFFINITY);
-  
-   
 }
  
 void loop() {
-  rst_millis = millis();
-  while (digitalRead(WiFi_rst) == LOW) {
-  }
-  if (millis() - rst_millis >= 3000) {
-    Serial.println("Reseting the WiFi credentials");
-    writeStringToFlash("", 0); // Reset the SSID
-    writeStringToFlash("", 40); // Reset the Password
-    Serial.println("Wifi credentials erased");
-    Serial.println("Restarting the ESP");
-    delay(500);
-    ESP.restart();
-  }
   client.loop();
 }
 
@@ -372,54 +485,42 @@ void BH1750_task(void *pvParameters){
   }
 }
 
-void MQTT_task(void *pvParameters){
-  while(1){
-    if(xSemaphoreTake(MQTT_semaphore, portTICK_PERIOD_MS) == pdTRUE){
-      memset(MQTT_Frame, 0, 1024);
-      sprintf(MQTT_Frame, "{\n\t\"Time_real_Date\":\"%02d/%02d/%02d %02d:%02d:%02d\",\n\t\"Soil_temp\":%.2f,\n\t\"Soil_humi\":%.2f,\n\t\"Soil_pH\":%.2f,\n\t\"Soil_Nito\":%.2f,\n\t\"Soil_Kali\":%.2f,\n\t\"Soil_Phosp\":%.2f,\n\t\"Env_temp\":%.2f,\n\t\"Env_Humi\":%.2f,\n\t\"Env_Lux\":%.2f\n}",
-              SensorData.Time_day,
-              SensorData.Time_month,
-              SensorData.Time_year,
-              SensorData.Time_hour,
-              SensorData.Time_min,
-              SensorData.Time_sec,
-              SensorData.Soil_temp,
-              SensorData.Soil_humi,
-              SensorData.Soil_pH,
-              SensorData.Soil_Nito,
-              SensorData.Soil_Kali,
-              SensorData.Soil_Phosp,
-              SensorData.Env_temp,
-              SensorData.Env_Humi,
-              SensorData.Env_Lux 
-      );
-
-      Serial.print("MQTT: "); 
-      Serial.println(MQTT_Frame);
-      xSemaphoreGive(MQTT_semaphore);
-    }
-    vTaskDelete(NULL);
-  }
-}
-
 void Displaytime_task(void *pvParameters){
+  Data_t time_data = {};
   while(1){
-    if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){;
+
+    time_data.Time_year = SensorData.Time_year;
+    time_data.Time_month = SensorData.Time_month;
+    time_data.Time_day = SensorData.Time_day;
+    time_data.Time_hour = SensorData.Time_hour;
+    time_data.Time_min = SensorData.Time_min;
+    time_data.Time_sec = SensorData.Time_sec;
+
+    memset(time_buff, 0, 64);
+    sprintf(time_buff, "%02d/%02d/%02d %02d:%02d:%02d", 
+    time_data.Time_day,
+    time_data.Time_month,
+    time_data.Time_year,
+    time_data.Time_hour,
+    time_data.Time_min,
+    time_data.Time_sec);
+
+
+    if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
       display.fillRect(0, 0, SCREEN_WIDTH, 9, BLACK);
       display.setCursor(0,0);
-      display.print(time_buff);
+      display.print(String(time_buff));
       display.display();
-      // Serial.println(time_buff);
       xSemaphoreGive(I2C_semaphore);
     }
+    // vTaskDelay(1000/portTICK_PERIOD_MS);
     vTaskDelete(NULL);
   }
 }
 
 void DS3231_task(void *pvParameters){
-  // Serial.println(pcTaskGetName(NULL));
+  Serial.println(pcTaskGetName(NULL));
   while(1){
-    // Serial.println(pcTaskGetName(NULL));
     if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
       DateTime now = rtc.now();
       
@@ -429,56 +530,101 @@ void DS3231_task(void *pvParameters){
       SensorData.Time_hour = now.hour();
       SensorData.Time_min = now.minute();
       SensorData.Time_sec = now.second();
-
-      memset(time_buff, 0, 512);
-      sprintf(time_buff, "%02d/%02d/%02d %02d:%02d:%02d", 
-      SensorData.Time_day,
-      SensorData.Time_month,
-      SensorData.Time_year,
-      SensorData.Time_hour,
-      SensorData.Time_min,
-      SensorData.Time_sec);
-
-      // Serial.println(time_buff);
-
       xSemaphoreGive(I2C_semaphore);
     }
-    xTaskCreatePinnedToCore(Displaytime_task, "Displaytime_task", 1024 * 4, NULL, 4, &Displaytime_task_handle, tskNO_AFFINITY);
+    // xTaskCreatePinnedToCore(Displaytime_task, "Displaytime_task", 1024 * 4, NULL, 4, &Displaytime_task_handle, tskNO_AFFINITY);
     vTaskDelay(1000/portTICK_PERIOD_MS);
   }
 } 
+
+void MQTT_task(void *pvParameters){
+  Data_t mqtt_data = {};
+  while(1){
+    if(uxQueueMessagesWaiting(data_queue) != 0){
+      if (xQueueReceive(data_queue, &mqtt_data, portMAX_DELAY) == pdPASS) {
+        Serial.print("MQTT data waiting to read ");
+        Serial.print(uxQueueMessagesWaiting(data_queue));
+        Serial.print(", Available space ");
+        Serial.println(uxQueueSpacesAvailable(data_queue));
+
+        WORD_ALIGNED_ATTR char mqttMessage[512];
+        sprintf(mqttMessage, "{\n\t\"Time_real_Date\":\"%02d/%02d/%02d %02d:%02d:%02d\",\n\t\"Soil_temp\":%.2f,\n\t\"Soil_humi\":%.2f,\n\t\"Soil_pH\":%.2f,\n\t\"Soil_Nito\":%.2f,\n\t\"Soil_Kali\":%.2f,\n\t\"Soil_Phosp\":%.2f,\n\t\"Env_temp\":%.2f,\n\t\"Env_Humi\":%.2f,\n\t\"Env_Lux\":%.2f\n}",
+                mqtt_data.Time_day,
+                mqtt_data.Time_month,
+                mqtt_data.Time_year,
+                mqtt_data.Time_hour,
+                mqtt_data.Time_min,
+                mqtt_data.Time_sec,
+                mqtt_data.Soil_temp,
+                mqtt_data.Soil_humi,
+                mqtt_data.Soil_pH,
+                mqtt_data.Soil_Nito,
+                mqtt_data.Soil_Phosp,
+                mqtt_data.Soil_Kali
+              );
+        Serial.println(mqttMessage);
+      }
+    }
+  }
+}
+
+void getData_task(void *pvParameters){
+  Serial.println(pcTaskGetName(NULL));
+  Data_t temp_data = {};
+  while(1){
+    temp_data.Env_Lux = SensorData.Env_Lux;
+    temp_data.Env_Humi = SensorData.Env_Humi;
+    temp_data.Env_temp = SensorData.Env_temp;
+    temp_data.Soil_temp = SensorData.Soil_temp;
+    temp_data.Soil_humi = SensorData.Soil_humi;
+    temp_data.Soil_pH = SensorData.Soil_pH;
+    temp_data.Soil_Nito = SensorData.Soil_Nito;
+    temp_data.Soil_Phosp = SensorData.Soil_Phosp;
+    temp_data.Soil_Kali = SensorData.Soil_Kali;
+
+    if (xQueueSendToBack(data_queue, (void *)&temp_data, 1000/portMAX_DELAY) == pdTRUE  ){
+			Serial.print("MQTT data waiting to read ");
+      Serial.print(uxQueueMessagesWaiting(data_queue));
+      Serial.print(", Available space ");
+      Serial.println(uxQueueSpacesAvailable(data_queue));
+      // if (client.connect("ESP32Client", mqttUser, mqttPassword)) {
+      //   client.publish("modelParam","hello world");
+      // }
+		}
+
+    memset(SD_Frame_buff, 0, 126);
+    sprintf(SD_Frame_buff, "%02d,%02d,%02d,%02d,%02d,%02d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n",
+                SensorData.Time_day,
+                SensorData.Time_month,
+                SensorData.Time_year,
+                SensorData.Time_hour,
+                SensorData.Time_min,
+                SensorData.Time_sec,
+                SensorData.Env_Lux,
+                SensorData.Env_temp,
+                SensorData.Env_Humi,
+                SensorData.Soil_temp,
+                SensorData.Soil_humi,
+                SensorData.Soil_pH,
+                SensorData.Soil_Nito,
+                SensorData.Soil_Phosp,
+                SensorData.Soil_Kali
+            );
+
+    Serial.println(SD_Frame_buff);
+    appendFile(SD, "/data.csv", SD_Frame_buff);
+    // vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
+    vTaskDelete(NULL);
+  }
+}
 
 void Display_task(void *pvParameters){
   while(1){
     vTaskDelay(2000/portTICK_PERIOD_MS);
     if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
       display.clearDisplay();
-      memset(SD_Frame, 0, 1024);
-
-      // "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n"
-      // sprintf(SD_Frame, "%02d,%02d,%02d,%02d,%02d,%02d,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n",
-      sprintf(SD_Frame, "{\n\t\"Time_real_Date\":\"%02d/%02d/%02d %02d:%02d:%02d\",\n\t\"Soil_temp\":%.2f,\n\t\"Soil_humi\":%.2f,\n\t\"Soil_pH\":%.2f,\n\t\"Soil_Nito\":%.2f,\n\t\"Soil_Kali\":%.2f,\n\t\"Soil_Phosp\":%.2f,\n\t\"Env_temp\":%.2f,\n\t\"Env_Humi\":%.2f,\n\t\"Env_Lux\":%.2f\n}", 
-              SensorData.Time_day,
-              SensorData.Time_month,
-              SensorData.Time_year,
-              SensorData.Time_hour,
-              SensorData.Time_min,
-              SensorData.Time_sec,
-              SensorData.Env_Lux,
-              SensorData.Env_temp,
-              SensorData.Env_Humi,
-              SensorData.Soil_temp,
-              SensorData.Soil_humi,
-              SensorData.Soil_pH,
-              SensorData.Soil_Nito,
-              SensorData.Soil_Phosp,
-              SensorData.Soil_Kali
-      );
-
-      Serial.print("SD: "); 
-      Serial.println(SD_Frame);
-
-      // xTaskCreatePinnedToCore(MQTT_task, "MQTT_task", 1024 * 4, NULL, 6, &MQTT_task_handle, tskNO_AFFINITY);
+      
+      
 
       int count_d=1;
       while(count_d<3){
@@ -497,7 +643,6 @@ void Display_task(void *pvParameters){
         count_d++;
       }
 
-      Serial.println("-----------------------------------------------------------");
       xSemaphoreGive(I2C_semaphore);
     }
     vTaskDelete(NULL);
@@ -506,12 +651,14 @@ void Display_task(void *pvParameters){
 
 void Control_task(void *pvParameters){
   while(1){
-    vTaskDelay(2000/portTICK_PERIOD_MS);
+    vTaskDelay(100/portTICK_PERIOD_MS);
   // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 5, &RS485_task_handle, tskNO_AFFINITY);
-  xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 5, &SHT25_task_handle, tskNO_AFFINITY);
+  // xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 5, &SHT25_task_handle, tskNO_AFFINITY);
   // xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 5, &BH1750_task_handle, tskNO_AFFINITY);
-  xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 6, &Display_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(getData_task, "getData_task", 1024 * 4, NULL, 6, &getData_task_handle, tskNO_AFFINITY);
+  // xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 6, &Display_task_handle, tskNO_AFFINITY);
+  
 
-  vTaskDelay(Period_minute_time*60000-2000/portTICK_PERIOD_MS);
+  vTaskDelay(Period_minute_time*60000-100/portTICK_PERIOD_MS);
   }
 }
