@@ -11,14 +11,13 @@
 #include "SPI.h"
 
 #include <WiFi.h>
-// #include <SoftwareSerial.h>
 #include <Arduino.h>
 #include "String.h"
 #include "EEPROM.h"
 
 #define uS_TO_M_FACTOR 1000000
 #define TIME_TO_SLEEP 10
-#define Period_minute_time 0.1
+#define Period_minute_time 5
 
 #define LENGTH(x) (strlen(x) + 1)
 #define EEPROM_SIZE 200
@@ -46,6 +45,10 @@
 #define CHECK_CODE_HI 0xFE
 #define NUMBER_BYTES_RESPONES 25
 
+// const char* ssid = "Tdnt";
+// const char* password =  "nhatthang642002";
+const char* ssid = "IOTTEST";
+const char* password =  "123456789";
 const int myChannelNumber = 2515584;
 const char * myWriteAPIKey = "8TGOAVM92D494KS1";
 const char* mqttServer = "sanslab.ddns.net";
@@ -57,7 +60,6 @@ const long  gmtOffset_sec = 6*3600+5;
 const int   daylightOffset_sec = 3600;
 
 TaskHandle_t RS485_task_handle;
-TaskHandle_t TimeOnline_task_handle;
 TaskHandle_t SHT25_task_handle;
 TaskHandle_t BH1750_task_handle;
 TaskHandle_t DS3231_task_handle;
@@ -66,7 +68,6 @@ TaskHandle_t Display_task_handle;
 
 static StaticSemaphore_t xSemaphoreBuffer;
 SemaphoreHandle_t I2C_semaphore = NULL;
-SemaphoreHandle_t MQTT_mutex = NULL;
 
 typedef struct Data_manager{
   uint16_t Time_year;
@@ -91,9 +92,9 @@ volatile Data_t SensorData;
 
 BH1750 lightMeter;
 RTC_DS3231 rtc;
-WiFiClient  Thing_client;
-WiFiClient espClient;
-PubSubClient client(espClient);
+// WiFiClient  httpclient;
+WiFiClient mqttclient;
+PubSubClient client(mqttclient);
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 const byte request[] = {ADDRESS, FUNCTION_CODE, INITIAL_ADDRESS_HI, INITIAL_ADDRESS_LO, DATA_LENGTH_HI, DATA_LENGTH_LO, CHECK_CODE_LO, CHECK_CODE_HI};
@@ -101,7 +102,7 @@ byte sensorResponse[NUMBER_BYTES_RESPONES];
 char SD_Frame[1024];
 char MQTT_Frame[1024];
 RTC_DATA_ATTR int errorCount = 0;
-String ssid, pss;
+// String ssid, pss;
 
 unsigned long rst_millis;
 
@@ -109,7 +110,6 @@ float TEMP, RH, S_T, S_RH;
 byte T_Delay = 85;  //for 14 bit resolution
 byte RH_Delay = 29; //for 12 bit resolution 
 
-/////////////////////////////////////////////////////////////////////
 char SHT25_resetSensor(void){
   Wire.beginTransmission(SHT25_ADDR);
   Wire.write(SOFT_RESET);
@@ -178,28 +178,6 @@ float convertBytesToFloat(byte hi, byte low){
   //Serial.println(intVal);
   return (float)intVal/10.0;
 }
-
-void getSoilSensorParameter(){
-  float soilHumi, soilTemp, soilPH, soilN,soilP,soilK;
-  // float soilConduct;
-
-  soilHumi = convertBytesToFloat(sensorResponse[3], sensorResponse[4]);
-  soilTemp = convertBytesToFloat(sensorResponse[5], sensorResponse[6]);
-  // soilConduct = convertBytesToFloat(sensorResponse[7], sensorResponse[8]);
-  soilPH = convertBytesToFloat(sensorResponse[9], sensorResponse[10]);
-  soilN = convertBytesToFloat(sensorResponse[11], sensorResponse[12]);
-  soilP = convertBytesToFloat(sensorResponse[13], sensorResponse[14]);
-  soilK = convertBytesToFloat(sensorResponse[15], sensorResponse[16]);
-
-  SensorData.Soil_temp = soilTemp;
-  SensorData.Soil_humi = soilHumi;
-  SensorData.Soil_pH = soilPH;
-  SensorData.Soil_Nito = soilN;
-  SensorData.Soil_Phosp = soilP;
-  SensorData.Soil_Kali = soilK;
-
-}
-
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     Serial.printf("Listing directory: %s\n", dirname);
 
@@ -268,12 +246,7 @@ void readFile(fs::FS &fs, const char * path){
 void writeFile(fs::FS &fs, const char * path, const char * message){
     Serial.printf("Writing file: %s\n", path);
 
-    // File file = fs.open(path, FILE_WRITE);
-    File file;
-    if (!SD.exists(path)) {//nếu fle này chưa được tạo => tạo ra rồi ghi
-      
-      file = fs.open(path, FILE_WRITE);
-    }
+    File file = fs.open(path, FILE_WRITE);
     if(!file){
         Serial.println("Failed to open file for writing");
         return;
@@ -295,8 +268,7 @@ void appendFile(fs::FS &fs, const char * path, const char * message){
         return;
     }
     if(file.print(message)){
-        Serial.print("Message appended: ");
-        Serial.print(message);
+        Serial.println("Message appended");
     } else {
         Serial.println("Append failed");
     }
@@ -363,34 +335,6 @@ void testFileIO(fs::FS &fs, const char * path){
     file.close();
 }
 
-int SD_start_check(void){
-  if(!SD.begin()){
-        Serial.println("Card Mount Failed");
-        return 0;
-    }
-    uint8_t cardType = SD.cardType();
-
-    if(cardType == CARD_NONE){
-        Serial.println("No SD card attached");
-        return 0;
-    }
-
-    Serial.print("SD Card Type: ");
-    if(cardType == CARD_MMC){
-        Serial.println("MMC");
-    } else if(cardType == CARD_SD){
-        Serial.println("SDSC");
-    } else if(cardType == CARD_SDHC){
-        Serial.println("SDHC");
-    } else {
-        Serial.println("UNKNOWN");
-    }
-
-    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-    Serial.printf("SD Card Size: %lluMB\n", cardSize);
-    return 1;
-}
-
 void writeStringToFlash(const char* toStore, int startAddr) {
   int i = 0;
   for (; i < LENGTH(toStore); i++) {
@@ -408,6 +352,27 @@ String readStringFromFlash(int startAddr) {
   }
   return String(in);
 }
+
+void getSoilSensorParameter(){
+  float soilHumi, soilTemp, soilPH, soilN,soilP,soilK;
+  // float soilConduct;
+
+  soilHumi = convertBytesToFloat(sensorResponse[3], sensorResponse[4]);
+  soilTemp = convertBytesToFloat(sensorResponse[5], sensorResponse[6]);
+  // soilConduct = convertBytesToFloat(sensorResponse[7], sensorResponse[8]);
+  soilPH = convertBytesToFloat(sensorResponse[9], sensorResponse[10]);
+  soilN = convertBytesToFloat(sensorResponse[11], sensorResponse[12]);
+  soilP = convertBytesToFloat(sensorResponse[13], sensorResponse[14]);
+  soilK = convertBytesToFloat(sensorResponse[15], sensorResponse[16]);
+
+  SensorData.Soil_temp = soilTemp;
+  SensorData.Soil_humi = soilHumi;
+  SensorData.Soil_pH = soilPH;
+  SensorData.Soil_Nito = soilN;
+  SensorData.Soil_Phosp = soilP;
+  SensorData.Soil_Kali = soilK;
+
+}
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void DS3231_task(void *pvParameters); //Take time task
@@ -418,7 +383,8 @@ void SHT25_task(void *pvParameters); // Temp, humi parameters
 void BH1750_task(void *pvParameters); // Lux parameter
 
 void setup() {
-  Serial.begin(9600); //init serial with computer
+ 
+  Serial.begin(9600);
   Wire.begin();
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
     Serial.println(F("SSD1306 allocation failed"));
@@ -427,119 +393,28 @@ void setup() {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
-
-  I2C_semaphore = xSemaphoreCreateCountingStatic( 4, 4, &xSemaphoreBuffer );  //Init I2C_semaphore
-  MQTT_mutex = xSemaphoreCreateMutex();  //Init MQTT_mutex
-  if (I2C_semaphore != NULL || MQTT_mutex != NULL)
+  I2C_semaphore = xSemaphoreCreateCountingStatic( 4, 4, &xSemaphoreBuffer );
+  if (I2C_semaphore != NULL)
   {
     display.setCursor(0,0);
     display.println("I2C_semaphore created");
     display.setCursor(0,10);
-    display.println("MQTT_mutex created");
+    display.println(4);
     display.display();
+    delay(1000);
+    display.clearDisplay();
   }
-
-  //----------------Set up smart config--------------------------------
-  pinMode(WiFi_rst, INPUT);
-  // if (!EEPROM.begin(EEPROM_SIZE)) { 
-  //   //Init EEPROM
-  //   display.clearDisplay();
-  //   display.setCursor(0,0);
-  //   display.println("Failed to init EEPROM");
-  //   display.display();
-  //   delay(1000);
-  // } else {
-  //   ssid = readStringFromFlash(0);
-  //   pss = readStringFromFlash(40);
-
-  //   display.clearDisplay();
-  //   display.setCursor(0, 10);
-  //   display.println("SSID = " + String(ssid));
-
-  //   display.setCursor(0, 20);
-  //   display.println("pass = " + String(pss));
-  //   display.display();
-  // }
-  // // WiFi.begin("ssid.c_str()", pss.c_str());
-  WiFi.begin("IOTTEST", "123456789");
-  delay(1000);
-
-  // if (WiFi.status() != WL_CONNECTED)
-  // {
-  //   WiFi.mode(WIFI_AP_STA);
-  //   WiFi.beginSmartConfig();
-
-  //   Serial.println(WiFi.status());
-
-  //   display.clearDisplay();
-  //   display.setCursor(0, 0);
-  //   display.println("Waiting for SmartConfig");
-
-  //   while (!WiFi.smartConfigDone()) {
-  //     display.setCursor(0, 0);
-  //     display.println("Waiting for SmartConfig");
-  //     display.setCursor(0,20);
-  //     display.println("<");
-  //     display.display();
-  //     delay(250);
-  //     display.setCursor(10,20);
-  //     display.println(">");
-  //     display.display();
-  //     delay(250);
-  //     display.clearDisplay();
-  //   }
-  //   display.clearDisplay();
-  //   display.setCursor(0, 0);
-  //   display.println("SmartConfig received.");
-  //   display.display();
-  //   display.setCursor(0, 10);
-  //   display.println("Waiting for WiFi");
-  //   display.display();
-
-  //   while (WiFi.status() != WL_CONNECTED) 
-  //   {
-  //     display.setCursor(0, 0);
-  //     display.println("SmartConfig received.");
-  //     display.setCursor(0, 10);
-  //     display.println("Waiting for WiFi");
-  //     display.setCursor(0,20);
-  //     display.println("<");
-  //     display.display();
-  //     delay(250);
-  //     display.setCursor(10,20);
-  //     display.println(">");
-  //     display.display();
-  //     delay(250);
-  //     display.clearDisplay();
-  //   }
-  //   display.setCursor(0,20);
-  //   display.println("WiFi Connected.");
-  //   display.setCursor(0,30);
-  //   display.println("IP Address:");
-  //   display.setCursor(0,40);
-  //   display.println(WiFi.localIP());
-  //   display.display();
-  //   ssid = WiFi.SSID();
-  //   pss = WiFi.psk();
-
-  //   display.clearDisplay();
-  //   display.setCursor(0, 0);
-  //   display.println("Storing SSID & PASSWORD in EEPROM");
-  //   writeStringToFlash(ssid.c_str(), 0);
-  //   writeStringToFlash(pss.c_str(), 40);
-  //   display.setCursor(0,20);
-  //   display.println("OK");
-  //   display.display();
-  // } else {
-  //   display.clearDisplay();
-  //   display.setCursor(0,0);
-  //   display.println("WiFi Connected");
-  //   Serial.println("WiFi Connected");
-  //   delay(1000);
-  //   display.display();
-  //   }
-  // //------------------------------------------------
-
+  WiFi.begin(ssid, password);
+ 
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.println("Connecting to WiFi..");
+  }
+ 
+  Serial.println("Connected to the WiFi network");
+ 
+  client.setServer(mqttServer, mqttPort);
+ 
   while (!client.connected()) {
     Serial.println("Connecting to MQTT...");
  
@@ -556,28 +431,43 @@ void setup() {
     }
   }
 
-  SHT25_begin();
-  // lightMeter.begin();
+  if(!SD.begin()){
+        Serial.println("Card Mount Failed");
+        return;
+    }
+  uint8_t cardType = SD.cardType();
+
+  if(cardType == CARD_NONE){
+      Serial.println("No SD card attached");
+      return;
+  }
+
+  Serial.print("SD Card Type: ");
+  if(cardType == CARD_MMC){
+      Serial.println("MMC");
+  } else if(cardType == CARD_SD){
+      Serial.println("SDSC");
+  } else if(cardType == CARD_SDHC){
+      Serial.println("SDHC");
+  } else {
+      Serial.println("UNKNOWN");
+  }
+
+  uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+  Serial.printf("SD Card Size: %lluMB\n", cardSize);
 
   if (! rtc.begin()) {
 
     display.clearDisplay();
     display.setCursor(0,0);
     display.println("Couldn't find RTC");
-    // xTaskCreatePinnedToCore(TimeOnline_task, "TimeOnline_task", 1024 * 4, NULL, 2, &TimeOnline_task_handle, tskNO_AFFINITY);
     display.display();
   } else {
    if (rtc.lostPower()) {
       display.clearDisplay();
       display.setCursor(0,0);
       display.println("RTC lost power, let's set the time!");
-      // Connect to Wi-Fi
-      //Read SSID stored at address 0
-      ssid = readStringFromFlash(0);
-      pss = readStringFromFlash(40);
-
-      WiFi.begin(ssid.c_str(), pss.c_str());
-      delay(1000);
+      WiFi.begin(ssid, password);
       
       // Init and get the time
       configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
@@ -589,44 +479,24 @@ void setup() {
       }
       rtc.adjust(DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec));
     }
-    xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 2, &DS3231_task_handle, tskNO_AFFINITY);
+    // xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 2, &DS3231_task_handle, tskNO_AFFINITY);
   }
 
-  // SD_start_check();
-  // writeFile(SD, "/data.csv", "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n");
+  SHT25_begin();
+  lightMeter.begin();
+  writeFile(SD, "/data.csv", "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n");
+  ThingSpeak.begin(mqttclient);
 
-  client.setServer(mqttServer, mqttPort);
-  // ThingSpeak.begin(Thing_client);
-
-  // xTaskCreatePinnedToCore(MQTT_task, "MQTT_Task", 1024 * 4, NULL, 3, &MQTT_task_handle, tskNO_AFFINITY);
-
-  // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 3, &RS485_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 3, &SHT25_task_handle, tskNO_AFFINITY);
-  // xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 3, &BH1750_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 3, &Display_task_handle, tskNO_AFFINITY);
+  // client.publish("modelParam", "Hello from ESP32");
+ 
 }
-
+ 
 void loop() {
-  // No thing in here because everything run in tasks
-  rst_millis = millis();
-  while (digitalRead(WiFi_rst) == LOW) {
-    // Wait till boot button is pressed 
-  }
-  if (millis() - rst_millis >= 3000) {
-    display.clearDisplay();
-    display.setCursor(0,0);
-    display.println("Reseting the WiFi credentials");
-    writeStringToFlash("", 0); // Reset the SSID
-    writeStringToFlash("", 40); // Reset the Password
-    display.setCursor(0,20);
-    display.println("Wifi credentials erased");
-    display.setCursor(0,40);
-    display.println("Restarting the ESP");
-    display.display();
-    delay(500);
-    ESP.restart();
-  }
-  // client.loop();
+  client.loop();
 }
 
 //Task
@@ -697,36 +567,6 @@ void DS3231_task(void *pvParameters){
   }
 }
 
-void TimeOnline_task(void *pvParameters){
-  while(1){
-    // Connect to Wi-Fi
-    ssid = readStringFromFlash(0);
-    pss = readStringFromFlash(40);
-    WiFi.begin(ssid.c_str(), pss.c_str());
-    delay(1000);
-    if (WiFi.status() != WL_CONNECTED){
-
-      configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-      struct tm timeinfo;
-      if(!getLocalTime(&timeinfo)){
-        display.clearDisplay();
-        display.setCursor(0,0);
-        display.println("Failed to obtain time");
-        display.display();
-        return;
-      }
-      SensorData.Time_year = timeinfo.tm_year + 1900;
-
-      SensorData.Time_month = timeinfo.tm_mon + 1;
-      SensorData.Time_day = timeinfo.tm_mday;
-      SensorData.Time_hour = timeinfo.tm_hour;
-      SensorData.Time_min = timeinfo.tm_min;
-      SensorData.Time_sec = timeinfo.tm_sec;
-    }
-    vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
-  }
-}
-
 void Display_task(void *pvParameters){
   while(1){
     vTaskDelay(1000/portTICK_PERIOD_MS);
@@ -765,12 +605,6 @@ void Display_task(void *pvParameters){
       );
       sprintf(MQTT_Frame, "{\n\t\"Time_real_Date\":\"%s\",\n\t\"Soil_temp\":%.2f,\n\t\"Soil_humi\":%.2f,\n\t\"Soil_pH\":%.2f,\n\t\"Soil_Nito\":%.2f,\n\t\"Soil_Kali\":%.2f,\n\t\"Soil_Phosp\":%.2f,\n\t\"Env_temp\":%.2f,\n\t\"Env_Humi\":%.2f,\n\t\"Env_Lux\":%.2f\n}", 
         time_buff,
-        // SensorData.Time_day,
-        // SensorData.Time_month,
-        // SensorData.Time_year,
-        // SensorData.Time_hour,
-        // SensorData.Time_min,
-        // SensorData.Time_sec,
         SensorData.Soil_temp,
         SensorData.Soil_humi,
         SensorData.Soil_pH,
@@ -782,42 +616,42 @@ void Display_task(void *pvParameters){
         SensorData.Env_Lux 
       );
 
-      // Serial.println(MQTT_Frame);
+      Serial.println(MQTT_Frame);
 
-      // client.publish("modelParam", MQTT_Frame);
+      client.publish("modelParam", MQTT_Frame);
 
-      // if(!SensorData.Time_day == 0){
-      //   appendFile(SD, "/data.csv", SD_Frame);
-      // }
+      if(!SensorData.Time_day == 0){
+        appendFile(SD, "/data.csv", SD_Frame);
+      }
 
-      // display.clearDisplay();
-      // display.setCursor(0,0);
-      // display.println(time_buff);
-      // display.display();
+      display.clearDisplay();
+      display.setCursor(0,0);
+      display.println(time_buff);
+      display.display();
 
       // set the fields with the values
-      // ThingSpeak.setField(1, SensorData.Env_Lux);
-      // ThingSpeak.setField(2, SensorData.Env_temp);
-      // ThingSpeak.setField(3, SensorData.Env_Humi);
-      // ThingSpeak.setField(4, SensorData.Soil_humi);
-      // ThingSpeak.setField(5, SensorData.Soil_pH);
-      // ThingSpeak.setField(6, SensorData.Soil_Nito);
-      // ThingSpeak.setField(7, SensorData.Soil_Phosp);
-      // ThingSpeak.setField(8, SensorData.Soil_Kali);
+      ThingSpeak.setField(1, SensorData.Env_Lux);
+      ThingSpeak.setField(2, SensorData.Env_temp);
+      ThingSpeak.setField(3, SensorData.Env_Humi);
+      ThingSpeak.setField(4, SensorData.Soil_humi);
+      ThingSpeak.setField(5, SensorData.Soil_pH);
+      ThingSpeak.setField(6, SensorData.Soil_Nito);
+      ThingSpeak.setField(7, SensorData.Soil_Phosp);
+      ThingSpeak.setField(8, SensorData.Soil_Kali);
 
-      // // write to the ThingSpeak channel
-      // int x1 = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
-      // if(x1 == 200){
-      //   Serial.println("Channel update successful.");
-      // } else {
-      //   Serial.println("Problem updating channel. HTTP error code " + String(x1));
-      //   errorCount++;
-      // }
+      // write to the ThingSpeak channel
+      int x1 = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+      if(x1 == 200){
+        Serial.println("Channel update successful.");
+      } else {
+        Serial.println("Problem updating channel. HTTP error code " + String(x1));
+        errorCount++;
+      }
 
-      // Serial.println("errorCount:" + errorCount);
+      Serial.println("errorCount:" + errorCount);
 
 
-      // Serial.println("-----------------------------------------------------------");
+      Serial.println("-----------------------------------------------------------");
       xSemaphoreGive(I2C_semaphore);
     }
     vTaskDelay(Period_minute_time*60000-1000/portTICK_PERIOD_MS);
