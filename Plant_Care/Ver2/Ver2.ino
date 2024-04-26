@@ -18,7 +18,7 @@
 
 #define uS_TO_M_FACTOR 1000000
 #define TIME_TO_SLEEP 10
-#define Period_minute_time 0.5
+#define Period_minute_time 5
 
 #define LENGTH(x) (strlen(x) + 1)
 #define EEPROM_SIZE 200
@@ -37,10 +37,13 @@
 #define CHECK_CODE_HI 0xFE
 #define NUMBER_BYTES_RESPONES 25
 
-const char* ssid = "Tom Bi";
-const char* password =  "TBH123456";
-// String ssid = "";
-// String pss =  "";
+#define BUT_GPIO 27
+#define LED_GPIO 26
+
+// const char* ssid = "minhquangng";
+// const char* password =  "TBH123456";
+String ssid = "minhquangng";
+String pss = "TBH123456";
 const int myChannelNumber = 2515584;
 const char * myWriteAPIKey = "8TGOAVM92D494KS1";
 const char* mqttServer = "sanslab.ddns.net";
@@ -105,7 +108,6 @@ byte sensorResponse[NUMBER_BYTES_RESPONES];
 
 char SD_Frame_buff[126];
 char SD_Frame[126];
-// char MQTT_Frame[1024];
 char time_buff[64];
 RTC_DATA_ATTR int errorCount = 0;
 // String ssid, pss;
@@ -215,6 +217,26 @@ void BH1750_task(void *pvParameters); // Lux parameter
 void Control_task(void *pvParameters);
 void getData_task(void *pvParameters);
 
+void set_button(void){
+  pinMode(LED_GPIO, OUTPUT);
+  pinMode(BUT_GPIO, INPUT);
+}
+
+void set_smartconfig(void){
+  if (!EEPROM.begin(EEPROM_SIZE)) { //Init EEPROM
+    Serial.println("failed to init EEPROM");
+    delay(1000);
+  } else {
+    ssid = readStringFromFlash(0);
+    Serial.print("SSID = ");
+    Serial.println(ssid);
+    pss = readStringFromFlash(40);
+    Serial.print("psss = ");
+    Serial.println(pss);
+  }
+
+}
+
 void esp_sd_start(void){
   if(!SD.begin()){
     display.clearDisplay();
@@ -275,22 +297,39 @@ void esp_rtc_start(void){
       display.setCursor(0,0);
       display.println("RTC lost power");
       display.display();
-      WiFi.begin(ssid, password);
+      WiFi.begin(ssid.c_str(), pss.c_str());
       
       // Init and get the time
       while (WiFi.status() != WL_CONNECTED) {
+        digitalWrite (LED_GPIO, HIGH);
         display.setCursor(0,10);
-        Serial.println("Connecting to WiFi  ");
+        display.fillRect(0, 10, SCREEN_WIDTH, 9, BLACK);
+        display.println("Connecting to WiFi");
         display.display();
-        delay(166);
+        display.setCursor(0,30);
+        display.println("SSID:"+String(ssid));
+        display.setCursor(0,40);
+        display.println("PASS:"+String(pss));
+        display.display();
+        delay(125);
+        digitalWrite (LED_GPIO, LOW);
         display.setCursor(0,10);
-        Serial.println("Connecting to WiFi. ");
+        display.fillRect(0, 10, SCREEN_WIDTH, 9, BLACK);
+        display.println("Connecting to WiFi.");
         display.display();
-        delay(166);
+        delay(125);
+        digitalWrite (LED_GPIO, HIGH);
         display.setCursor(0,10);
-        Serial.println("Connecting to WiFi..");
+        display.fillRect(0, 10, SCREEN_WIDTH, 9, BLACK);
+        display.println("Connecting to WiFi..");
         display.display();
-        delay(166);
+        delay(125);
+        digitalWrite (LED_GPIO, LOW);
+        display.setCursor(0,10);
+        display.fillRect(0, 10, SCREEN_WIDTH, 9, BLACK);
+        display.println("Connecting to WiFi...");
+        display.display();
+        delay(125);
       }
       configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
@@ -338,8 +377,21 @@ void esp_connect_mqtt(void){
 }
 
 void esp_connect_wifi(void){
-  WiFi.begin(ssid, password);
+  // WiFi.begin(ssid, password);
+  WiFi.begin(ssid.c_str(), pss.c_str());
   while (WiFi.status() != WL_CONNECTED) {
+    // if(ssid == ""){
+    //   WiFi.mode(WIFI_AP_STA);
+    //   WiFi.beginSmartConfig();
+    //   Serial.println("Waiting for SmartConfig.");
+    //   while (!WiFi.smartConfigDone()) {
+    //     delay(500);
+    //     Serial.print(".");
+    //   }
+    //   Serial.println("");
+    //   Serial.println("SmartConfig received.");
+    // }
+    digitalWrite (LED_GPIO, HIGH);
     display.setCursor(0,0);
     display.fillRect(0, 0, SCREEN_WIDTH, 9, BLACK);
     display.println("Connecting to WiFi");
@@ -347,19 +399,22 @@ void esp_connect_wifi(void){
     display.setCursor(0,20);
     display.println("SSID:"+String(ssid));
     display.setCursor(0,30);
-    display.println("PASS:"+String(password));
+    display.println("PASS:"+String(pss));
     display.display();
     delay(125);
+    digitalWrite (LED_GPIO, LOW);
     display.setCursor(0,0);
     display.fillRect(0, 0, SCREEN_WIDTH, 9, BLACK);
     display.println("Connecting to WiFi.");
     display.display();
     delay(125);
+    digitalWrite (LED_GPIO, HIGH);
     display.setCursor(0,0);
     display.fillRect(0, 0, SCREEN_WIDTH, 9, BLACK);
     display.println("Connecting to WiFi..");
     display.display();
     delay(125);
+    digitalWrite (LED_GPIO, LOW);
     display.setCursor(0,0);
     display.fillRect(0, 0, SCREEN_WIDTH, 9, BLACK);
     display.println("Connecting to WiFi...");
@@ -385,6 +440,8 @@ void esp_start(void){
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.clearDisplay();
+
+  set_button();
 
   esp_connect_wifi();
   esp_connect_mqtt();
@@ -426,11 +483,26 @@ void setup() {
   // writeFile(SD, "/data.csv", "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n");
   // ThingSpeak.begin(mqttclient);
 
-  // xTaskCreatePinnedToCore(Control_task, "Control_task", 1024 * 4, NULL, 1, &Control_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(Control_task, "Control_task", 1024 * 4, NULL, 2, &Control_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(DS3231_task, "DS3231_Task", 1024 * 4, NULL, 3, &DS3231_task_handle, tskNO_AFFINITY);
 }
  
 void loop() {
+  rst_millis = millis();
+  
+  while (digitalRead(BUT_GPIO) == LOW) {
+    // Wait till boot button is pressed 
+  }
+  if (millis() - rst_millis >= 3000) {
+    Serial.println("Reseting the WiFi credentials");
+    writeStringToFlash("", 0); // Reset the SSID
+    writeStringToFlash("", 40); // Reset the Password
+    Serial.println("Wifi credentials erased");
+    Serial.println("Restarting the ESP");
+    delay(3000);
+    ESP.restart();
+  }
+
   client.loop();
 }
 
@@ -481,7 +553,7 @@ void BH1750_task(void *pvParameters){
       SensorData.Env_Lux = lightMeter.readLightLevel();
       xSemaphoreGive(I2C_semaphore);
     }
-    vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
+    vTaskDelete(NULL);
   }
 }
 
@@ -532,7 +604,7 @@ void DS3231_task(void *pvParameters){
       SensorData.Time_sec = now.second();
       xSemaphoreGive(I2C_semaphore);
     }
-    // xTaskCreatePinnedToCore(Displaytime_task, "Displaytime_task", 1024 * 4, NULL, 4, &Displaytime_task_handle, tskNO_AFFINITY);
+    xTaskCreatePinnedToCore(Displaytime_task, "Displaytime_task", 1024 * 4, NULL, 4, &Displaytime_task_handle, tskNO_AFFINITY);
     vTaskDelay(1000/portTICK_PERIOD_MS);
   }
 } 
@@ -546,7 +618,6 @@ void MQTT_task(void *pvParameters){
         Serial.print(uxQueueMessagesWaiting(data_queue));
         Serial.print(", Available space ");
         Serial.println(uxQueueSpacesAvailable(data_queue));
-
         WORD_ALIGNED_ATTR char mqttMessage[512];
         sprintf(mqttMessage, "{\n\t\"Time_real_Date\":\"%02d/%02d/%02d %02d:%02d:%02d\",\n\t\"Soil_temp\":%.2f,\n\t\"Soil_humi\":%.2f,\n\t\"Soil_pH\":%.2f,\n\t\"Soil_Nito\":%.2f,\n\t\"Soil_Kali\":%.2f,\n\t\"Soil_Phosp\":%.2f,\n\t\"Env_temp\":%.2f,\n\t\"Env_Humi\":%.2f,\n\t\"Env_Lux\":%.2f\n}",
                 mqtt_data.Time_day,
@@ -560,11 +631,22 @@ void MQTT_task(void *pvParameters){
                 mqtt_data.Soil_pH,
                 mqtt_data.Soil_Nito,
                 mqtt_data.Soil_Phosp,
-                mqtt_data.Soil_Kali
+                mqtt_data.Soil_Kali,
+                mqtt_data.Env_temp,
+                mqtt_data.Env_Humi,
+                mqtt_data.Env_Lux
               );
         Serial.println(mqttMessage);
+        // if (client.connect("ESP32Client", mqttUser, mqttPassword)) {
+          if(client.publish("modelParam", mqttMessage)){
+            digitalWrite (LED_GPIO, HIGH);
+            vTaskDelay(2000/portTICK_PERIOD_MS);
+            digitalWrite (LED_GPIO, LOW);
+          }
+        // }
       }
     }
+    vTaskDelete(NULL);
   }
 }
 
@@ -581,15 +663,19 @@ void getData_task(void *pvParameters){
     temp_data.Soil_Nito = SensorData.Soil_Nito;
     temp_data.Soil_Phosp = SensorData.Soil_Phosp;
     temp_data.Soil_Kali = SensorData.Soil_Kali;
+    temp_data.Time_year = SensorData.Time_year;
+    temp_data.Time_month = SensorData.Time_month;
+    temp_data.Time_day = SensorData.Time_day;
+    temp_data.Time_hour = SensorData.Time_hour;
+    temp_data.Time_min = SensorData.Time_min;
+    temp_data.Time_sec = SensorData.Time_sec;
 
     if (xQueueSendToBack(data_queue, (void *)&temp_data, 1000/portMAX_DELAY) == pdTRUE  ){
 			Serial.print("MQTT data waiting to read ");
       Serial.print(uxQueueMessagesWaiting(data_queue));
       Serial.print(", Available space ");
       Serial.println(uxQueueSpacesAvailable(data_queue));
-      // if (client.connect("ESP32Client", mqttUser, mqttPassword)) {
-      //   client.publish("modelParam","hello world");
-      // }
+      xTaskCreatePinnedToCore(MQTT_task, "MQTT_task", 1024 * 4, NULL, 7, &MQTT_task_handle, tskNO_AFFINITY);
 		}
 
     memset(SD_Frame_buff, 0, 126);
@@ -612,8 +698,7 @@ void getData_task(void *pvParameters){
             );
 
     Serial.println(SD_Frame_buff);
-    appendFile(SD, "/data.csv", SD_Frame_buff);
-    // vTaskDelay(Period_minute_time*60000/portTICK_PERIOD_MS);
+    // appendFile(SD, "/data.csv", SD_Frame_buff);
     vTaskDelete(NULL);
   }
 }
@@ -653,12 +738,11 @@ void Control_task(void *pvParameters){
   while(1){
     vTaskDelay(100/portTICK_PERIOD_MS);
   // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 5, &RS485_task_handle, tskNO_AFFINITY);
-  // xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 5, &SHT25_task_handle, tskNO_AFFINITY);
+  xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 5, &SHT25_task_handle, tskNO_AFFINITY);
   // xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 5, &BH1750_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(getData_task, "getData_task", 1024 * 4, NULL, 6, &getData_task_handle, tskNO_AFFINITY);
   // xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 6, &Display_task_handle, tskNO_AFFINITY);
   
-
   vTaskDelay(Period_minute_time*60000-100/portTICK_PERIOD_MS);
   }
 }
