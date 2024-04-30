@@ -7,6 +7,7 @@
 #include <SHT25.h>
 #include "nRF24L01.h"
 #include "RF24.h"
+#include <EasyButton.h>
 
 #include "time.h"
 #include "FS.h"
@@ -41,7 +42,7 @@
 
 #define BUT_GPIO 27
 #define LED_GPIO 26
-#define RF_CS 2
+#define RF_CS 15
 #define SD_CS 5
 
 // const char* ssid = "minhquangng";
@@ -98,13 +99,34 @@ typedef struct Data_manager{
 } Data_t;
 
 volatile Data_t SensorData;
-Data_t mqtt_data={};
-const uint64_t addr = 0xE8E8F0F0E1LL;
 
-RF24 radio(4, 2, 18, 19, 23); //CE-CS-SCK-miso-mosi
+typedef struct Data_rf_manager{
+  int index;
+  uint16_t Time_year;
+	uint8_t Time_month;
+	uint8_t Time_day;
+	uint8_t Time_hour;
+	uint8_t Time_min;
+	uint8_t Time_sec;
+
+  float Soil_temp;
+  float Soil_humi;
+  float Soil_pH;
+  float Soil_Nito;
+  float Soil_Phosp;
+  float Soil_Kali;
+
+} Data_rf;
+
+// Data_rf SentRFData;
+
+const uint64_t address = 0xF0F0F0F0E1LL; 
+
+RF24 radio(4, 15, 18, 19, 23); //CE-CS-SCK-miso-mosi
 BH1750 lightMeter;
 RTC_DS3231 rtc;
 SHT25 H_Sens;
+EasyButton button(BUT_GPIO);
 
 // WiFiClient  httpclient;
 WiFiClient mqttclient;
@@ -120,7 +142,6 @@ char time_buff[64];
 RTC_DATA_ATTR int errorCount = 0;
 // String ssid, pss;
 
-unsigned long rst_millis;
 
 float convertBytesToFloat(byte hi, byte low){
   int intVal = (hi << 8) | low;
@@ -214,6 +235,37 @@ void callback(char* topic, byte* payload, unsigned int length) {
     display.display();
   }
 }
+
+void buttonPressedFiveSeconds()
+{
+  Serial.println("Reseting the WiFi credentials");
+  writeStringToFlash("", 0); // Reset the SSID
+  writeStringToFlash("", 40); // Reset the Password
+  Serial.println("Wifi credentials erased");
+  Serial.println("Restarting the ESP");
+  digitalWrite(LED_GPIO, HIGH);
+  delay(500);
+  digitalWrite(LED_GPIO, LOW);
+  delay(500);
+  digitalWrite(LED_GPIO, HIGH);
+  delay(500);
+  digitalWrite(LED_GPIO, LOW);
+  digitalWrite(LED_GPIO, HIGH);
+  delay(500);
+  digitalWrite(LED_GPIO, LOW);
+  delay(500);
+  digitalWrite(LED_GPIO, HIGH);
+  delay(500);
+  digitalWrite(LED_GPIO, LOW);
+  
+  ESP.restart();
+}
+
+void buttonISR()
+{
+  // When button is being used through external interrupts, parameter INTERRUPT must be passed to read() function.
+  button.read();
+}
 ///////////////////////////////////////////////////////////////////////////////////////////
 
 void DS3231_task(void *pvParameters); //Take time task
@@ -233,6 +285,13 @@ void set_button(void){
   pinMode(BUT_GPIO, INPUT);
   digitalWrite(RF_CS, HIGH);
   digitalWrite(SD_CS, HIGH);
+  digitalWrite(LED_GPIO, LOW);
+  button.begin();
+  button.onPressedFor(4000, buttonPressedFiveSeconds);
+  if (button.supportsInterrupt())
+  {
+    button.enableInterrupt(buttonISR);
+  }
 }
 
 void set_smartconfig(void){
@@ -467,21 +526,27 @@ void esp_spi_start(void){
     display.setCursor(0,0);
     display.println("RF Ready!");
     display.display();
+    radio.setDataRate(RF24_250KBPS);
+    radio.openWritingPipe(address); //Setting the address where we will send the data
+    radio.setPALevel(RF24_PA_MIN);  //You can set it as minimum or maximum depending on the distance between the transmitter and receiver.
+    radio.stopListening();
   }
 
-  radio.setChannel(2);
+  // radio.setChannel(2);
   // radio.setPayloadSize(24);
-  radio.setDataRate(RF24_250KBPS);
-  radio.openWritingPipe(addr);
+  // radio.setPALevel(RF24_PA_MIN);
+  // radio.setDataRate(RF24_250KBPS);
+  // radio.openWritingPipe(address);
+  // radio.stopListening();
   digitalWrite(RF_CS, HIGH);
 
-  display.setCursor(0,20);
-  display.println("SetChannel: 2");
-  display.setCursor(0,30);
-  display.println("SetDataRate: " + String(RF24_250KBPS));
-  display.setCursor(0,40);
-  display.println("SetAddress: " + String(addr));
-  display.display();
+  // display.setCursor(0,20);
+  // display.println("SetChannel: 2");
+  // display.setCursor(0,30);
+  // display.println("SetDataRate: " + String(RF24_250KBPS));
+  // display.setCursor(0,40);
+  // display.println("SetAddress: " + String(address));
+  // display.display();
 }
 
 void esp_start(void){
@@ -544,21 +609,8 @@ void setup() {
 }
  
 void loop() {
-  rst_millis = millis();
-  
-  while (digitalRead(BUT_GPIO) == LOW) {
-    // Wait till boot button is pressed 
-  }
-  if (millis() - rst_millis >= 3000) {
-    Serial.println("Reseting the WiFi credentials");
-    writeStringToFlash("", 0); // Reset the SSID
-    writeStringToFlash("", 40); // Reset the Password
-    Serial.println("Wifi credentials erased");
-    Serial.println("Restarting the ESP");
-    delay(3000);
-    ESP.restart();
-  }
 
+  button.update();
   client.loop();
 }
 
@@ -673,15 +725,15 @@ void Display_task(void *pvParameters){
       while(count_d<3){
         display.fillRect(0, 8, SCREEN_WIDTH, 60, BLACK);
         display.setCursor(0,11);
-        display.println("Env-Lux: " + String(mqtt_data.Env_Lux));
+        display.println("Env-Lux: " + String(SensorData.Env_Lux));
         display.setCursor(0,22);
-        display.println("Env-T/H: " + String(mqtt_data.Env_temp)+"/"+String(mqtt_data.Env_Humi));
+        display.println("Env-T/H: " + String(SensorData.Env_temp)+"/"+String(SensorData.Env_Humi));
         display.setCursor(0,33);
-        display.println("Soi-T/H: " + String(mqtt_data.Soil_temp)+"/"+String(mqtt_data.Soil_humi));
+        display.println("Soi-T/H: " + String(SensorData.Soil_temp)+"/"+String(SensorData.Soil_humi));
         display.setCursor(0,44);
-        display.println("Soi-pH: " + String(mqtt_data.Soil_pH));
+        display.println("Soi-pH: " + String(SensorData.Soil_pH));
         display.setCursor(0,55);
-        display.println("NPK:" + String(mqtt_data.Soil_Nito)+"/"+String(mqtt_data.Soil_Phosp)+"/"+String(mqtt_data.Soil_Kali));
+        display.println("NPK:" + String(SensorData.Soil_Nito)+"/"+String(SensorData.Soil_Phosp)+"/"+String(SensorData.Soil_Kali));
         display.display();
         count_d++;
       }
@@ -735,22 +787,58 @@ void MQTT_task(void *pvParameters){
 void RF24_task(void *pvParameters){
   Serial.println(pcTaskGetName(NULL));
   // Data_t mqtt_data={};
+  Data_t mqtt_data={};
+  Data_rf rf_data={};
 
   while(1){
     if(uxQueueMessagesWaiting(data_queue) != 0){
       if (xQueueReceive(data_queue, &mqtt_data, portMAX_DELAY) == pdPASS) {
+        digitalWrite(LED_GPIO, HIGH);
         Serial.print("MQTT data waiting to read ");
         Serial.print(uxQueueMessagesWaiting(data_queue));
         Serial.print(", Available space ");
         Serial.println(uxQueueSpacesAvailable(data_queue));
 
-        xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 8, &Display_task_handle, tskNO_AFFINITY);
-
         if(xSemaphoreTake(MQTT_semaphore, portTICK_PERIOD_MS) == pdTRUE){
           digitalWrite(RF_CS, LOW);
-          digitalWrite(LED_GPIO, HIGH);
           vTaskDelay(10/portTICK_PERIOD_MS);
-          radio.write(&mqtt_data, sizeof(Data_t));
+          Serial.println("send 1...");
+          rf_data = {
+            1,
+            mqtt_data.Time_year,
+            mqtt_data.Time_month,
+            mqtt_data.Time_day,
+            mqtt_data.Time_hour,
+            mqtt_data.Time_min,
+            mqtt_data.Time_sec, 
+            mqtt_data.Soil_temp,
+            mqtt_data.Soil_humi, 
+            mqtt_data.Soil_pH, 
+            mqtt_data.Soil_Nito,
+            mqtt_data.Soil_Phosp,
+            mqtt_data.Soil_Kali
+          };
+
+          radio.write(&rf_data, sizeof(Data_rf));
+          vTaskDelay(50/portTICK_PERIOD_MS);
+          Serial.println("send 2...");
+          rf_data = {
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0, 
+            mqtt_data.Env_temp,
+            mqtt_data.Env_Humi,
+            mqtt_data.Env_Lux, 
+            0,
+            0,
+            0
+          };
+
+          radio.write(&rf_data, sizeof(Data_rf));
           digitalWrite(RF_CS, HIGH);
           xSemaphoreGive(MQTT_semaphore);
         }
@@ -810,6 +898,7 @@ void getData_task(void *pvParameters){
             );
 
     Serial.println(SD_Frame_buff);
+    xTaskCreatePinnedToCore(Display_task, "Display_task", 1024 * 4, NULL, 8, &Display_task_handle, tskNO_AFFINITY);
 
     if(xSemaphoreTake(MQTT_semaphore, portTICK_PERIOD_MS) == pdTRUE){
       digitalWrite(SD_CS, LOW);
@@ -818,7 +907,7 @@ void getData_task(void *pvParameters){
       digitalWrite(SD_CS, HIGH);
       xSemaphoreGive(MQTT_semaphore);
     }
-    vTaskDelay(1000/portTICK_PERIOD_MS);
+    vTaskDelay(2000/portTICK_PERIOD_MS);
     digitalWrite(LED_GPIO, LOW);
     vTaskDelete(NULL);
   }
@@ -831,7 +920,7 @@ void Control_task(void *pvParameters){
   xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 5, &SHT25_task_handle, tskNO_AFFINITY);
   // xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 5, &BH1750_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(getData_task, "getData_task", 1024 * 4, NULL, 6, &getData_task_handle, tskNO_AFFINITY);
-  
+  // xTaskCreatePinnedToCore(RF24_task, "RF24_task", 1024 * 4, NULL, 7, &RF24_task_handle, tskNO_AFFINITY);
   vTaskDelay(Period_minute_time*60000-100/portTICK_PERIOD_MS);
   }
 }
