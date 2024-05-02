@@ -5,8 +5,8 @@
 #include <PubSubClient.h>
 #include <Wire.h>
 
-const char* ssid = "DN Bao Tam 2";
-const char* password = "28061997";
+// const char* ssid = "DN Bao Tam 2";
+// const char* password = "28061997";
 // const char* ssid = "minhquangng";
 // const char* password = "TBH123456";
 const char* mqttServer = "sanslab.ddns.net";
