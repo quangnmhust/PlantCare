@@ -2,9 +2,11 @@
 #include <ThingSpeak.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <LiquidCrystal_I2C.h>
 #include <RTClib.h>
 #include <BH1750.h>
-#include <SHT25.h>
+// #include <SHT25.h>
+#include "Adafruit_SHT4x.h"
 #include "nRF24L01.h"
 #include "RF24.h"
 #include <EasyButton.h>
@@ -125,8 +127,10 @@ const uint64_t address = 0xF0F0F0F0E1LL;
 RF24 radio(4, 15, 18, 19, 23); //CE-CS-SCK-miso-mosi
 BH1750 lightMeter;
 RTC_DS3231 rtc;
-SHT25 H_Sens;
+// SHT25 H_Sens;
+Adafruit_SHT4x H_Sens = Adafruit_SHT4x();
 EasyButton button(BUT_GPIO);
+LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 // WiFiClient  httpclient;
 WiFiClient mqttclient;
@@ -357,21 +361,28 @@ void esp_rtc_start(void){
     display.clearDisplay();
     display.setCursor(0,0);
     display.println("Couldn't find RTC");
+    lcd.setCursor(0, 2);
+    lcd.print("Couldn't find RTC");
     display.display();
   } else {
    if (rtc.lostPower()) {
       display.clearDisplay();
       display.setCursor(0,0);
       display.println("RTC lost power");
+      lcd.setCursor(0, 2);
+      lcd.print("RTC lost power");
       display.display();
       WiFi.begin(ssid.c_str(), pss.c_str());
       
       // Init and get the time
       while (WiFi.status() != WL_CONNECTED) {
         digitalWrite (LED_GPIO, HIGH);
+        lcd.clear();
         display.setCursor(0,10);
         display.fillRect(0, 10, SCREEN_WIDTH, 9, BLACK);
         display.println("Connecting to WiFi");
+        lcd.setCursor(0, 0);
+        lcd.print("Connecting to WiFi");
         display.display();
         display.setCursor(0,30);
         display.println("SSID:"+String(ssid));
@@ -382,18 +393,28 @@ void esp_rtc_start(void){
         digitalWrite (LED_GPIO, LOW);
         display.setCursor(0,10);
         display.fillRect(0, 10, SCREEN_WIDTH, 9, BLACK);
+        lcd.setCursor(0, 0);
+        lcd.print("Connecting to WiFi.   ");
+        lcd.setCursor(0,20);
+        display.println(String(ssid));
+        lcd.setCursor(0,30);
+        display.println(String(pss));
         display.println("Connecting to WiFi.");
         display.display();
         delay(125);
         digitalWrite (LED_GPIO, HIGH);
         display.setCursor(0,10);
         display.fillRect(0, 10, SCREEN_WIDTH, 9, BLACK);
+        lcd.setCursor(0, 0);
+        lcd.print("Connecting to WiFi..  ");
         display.println("Connecting to WiFi..");
         display.display();
         delay(125);
         digitalWrite (LED_GPIO, LOW);
         display.setCursor(0,10);
         display.fillRect(0, 10, SCREEN_WIDTH, 9, BLACK);
+        lcd.setCursor(0, 0);
+        lcd.print("Connecting to WiFi...   ");
         display.println("Connecting to WiFi...");
         display.display();
         delay(125);
@@ -409,12 +430,19 @@ void esp_rtc_start(void){
     } else {
       DateTime time_start = rtc.now();
       display.clearDisplay();
+      lcd.clear();
       display.setCursor(0,0);
+      lcd.setCursor(0, 0);
+      lcd.print("RTC ready!");
       display.println("RTC ready!");
       display.setCursor(0,20);
       display.println("Time:");
+      lcd.setCursor(0, 1);
+      lcd.print("Time:");
       display.setCursor(0,30);
       display.println(String(time_start.timestamp(DateTime::TIMESTAMP_FULL)));
+      lcd.setCursor(0, 2);
+      lcd.print(String(time_start.timestamp(DateTime::TIMESTAMP_FULL)));
       display.display();
     }
   }
@@ -506,6 +534,8 @@ void esp_spi_start(void){
   } else {
     uint64_t cardSize = SD.cardSize() / (1024 * 1024);
     display.setCursor(0,20);
+    lcd.setCursor(0, 0);
+    lcd.print("SD Size: " + String(cardSize) + String(" MB"));
     display.println("SD Card Size:");
     display.setCursor(0,30);
     display.println(cardSize + String(" MB"));
@@ -520,11 +550,15 @@ void esp_spi_start(void){
     display.clearDisplay();
     display.setCursor(0,0);
     display.println("RF Failed!");
+    lcd.setCursor(0, 1);
+    lcd.print("RF Failed!");
     display.display();
   }else{
     display.clearDisplay();
     display.setCursor(0,0);
     display.println("RF Ready!");
+    lcd.setCursor(0, 1);
+    lcd.print("RF Ready!");
     display.display();
     radio.setDataRate(RF24_250KBPS);
     radio.openWritingPipe(address); //Setting the address where we will send the data
@@ -561,6 +595,9 @@ void esp_start(void){
   display.setTextColor(WHITE);
   display.clearDisplay();
 
+  lcd.init(); // initialize the lcd
+  lcd.backlight();
+
   set_button();
   // esp_connect_wifi();
   // esp_connect_mqtt();
@@ -577,6 +614,9 @@ void setup() {
   if (I2C_semaphore != NULL)
   {
     display.clearDisplay();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("I2C_semaphore created");
     display.setCursor(0,0);
     display.println("I2C_semaphore created");
     display.display();
@@ -586,6 +626,8 @@ void setup() {
   {
     display.setCursor(0,20);
     display.println("MQTT_semaph created");
+    lcd.setCursor(0, 1);
+    lcd.print("MQTT_semaph created");
     display.display();
   }
 
@@ -594,12 +636,28 @@ void setup() {
   {
     display.setCursor(0,40);
     display.println("Data_queue created");
+    lcd.setCursor(0, 2);
+    lcd.print("Data_queue created");
     display.display();
     delay(1000);
     display.clearDisplay();
+    lcd.clear();
   }
 
   H_Sens.begin();
+  H_Sens.setPrecision(SHT4X_HIGH_PRECISION);
+  switch (H_Sens.getPrecision()) {
+     case SHT4X_HIGH_PRECISION: 
+       Serial.println("High precision");
+       break;
+     case SHT4X_MED_PRECISION: 
+       Serial.println("Med precision");
+       break;
+     case SHT4X_LOW_PRECISION: 
+       Serial.println("Low precision");
+       break;
+  }
+  H_Sens.setHeater(SHT4X_NO_HEATER);
   // lightMeter.begin();
   writeFile(SD, "/data.csv", "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n");
   // ThingSpeak.begin(mqttclient);
@@ -643,10 +701,12 @@ void RS485_task(void *pvParameters){
 
 void SHT25_task(void *pvParameters){
   Serial.println(pcTaskGetName(NULL));
+  sensors_event_t humidity, temp;
   while(1){
     if (xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
-      SensorData.Env_temp = H_Sens.getTemperature();
-      SensorData.Env_Humi = H_Sens.getHumidity();
+      H_Sens.getEvent(&humidity, &temp);
+      SensorData.Env_temp = temp.temperature;
+      SensorData.Env_Humi = humidity.relative_humidity;
       Serial.println(SensorData.Env_temp);
       Serial.println(SensorData.Env_Humi);
       xSemaphoreGive(I2C_semaphore);
@@ -687,10 +747,12 @@ void Displaytime_task(void *pvParameters){
 
 
     if(xSemaphoreTake(I2C_semaphore, portTICK_PERIOD_MS) == pdTRUE){
-      display.fillRect(0, 0, SCREEN_WIDTH, 9, BLACK);
-      display.setCursor(0,0);
-      display.print(String(time_buff));
-      display.display();
+      // display.fillRect(0, 0, SCREEN_WIDTH, 9, BLACK);
+      // display.setCursor(0,0);
+      // display.print(String(time_buff));
+      lcd.setCursor(0, 0);
+      lcd.print(String(time_buff));
+      // display.display();
       xSemaphoreGive(I2C_semaphore);
     }
     vTaskDelete(NULL);
@@ -728,12 +790,22 @@ void Display_task(void *pvParameters){
         display.println("Env-Lux: " + String(SensorData.Env_Lux));
         display.setCursor(0,22);
         display.println("Env-T/H: " + String(SensorData.Env_temp)+"/"+String(SensorData.Env_Humi));
+        lcd.setCursor(0, 1);
+        lcd.print("Env-T/H: ");
+        lcd.setCursor(8, 1);
+        lcd.print(SensorData.Env_temp);
+        lcd.setCursor(13, 1);
+        lcd.print("/");
+        lcd.setCursor(14, 1);
+        lcd.print(SensorData.Env_Humi);
         display.setCursor(0,33);
         display.println("Soi-T/H: " + String(SensorData.Soil_temp)+"/"+String(SensorData.Soil_humi));
         display.setCursor(0,44);
         display.println("Soi-pH: " + String(SensorData.Soil_pH));
+        lcd.setCursor(0, 3);
         display.setCursor(0,55);
         display.println("NPK:" + String(SensorData.Soil_Nito)+"/"+String(SensorData.Soil_Phosp)+"/"+String(SensorData.Soil_Kali));
+        lcd.print("NPK:" + String(SensorData.Soil_Nito)+"/"+String(SensorData.Soil_Phosp)+"/"+String(SensorData.Soil_Kali));
         display.display();
         count_d++;
       }
@@ -914,6 +986,7 @@ void getData_task(void *pvParameters){
 }
 
 void Control_task(void *pvParameters){
+  int count= 0;
   while(1){
     vTaskDelay(100/portTICK_PERIOD_MS);
   // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 5, &RS485_task_handle, tskNO_AFFINITY);
@@ -921,6 +994,11 @@ void Control_task(void *pvParameters){
   // xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 5, &BH1750_task_handle, tskNO_AFFINITY);
   xTaskCreatePinnedToCore(getData_task, "getData_task", 1024 * 4, NULL, 6, &getData_task_handle, tskNO_AFFINITY);
   // xTaskCreatePinnedToCore(RF24_task, "RF24_task", 1024 * 4, NULL, 7, &RF24_task_handle, tskNO_AFFINITY);
+  count++;
   vTaskDelay(Period_minute_time*60000-100/portTICK_PERIOD_MS);
+  Serial.println(count);
+  if(count == 25){
+    ESP.restart();
+  }
   }
 }
