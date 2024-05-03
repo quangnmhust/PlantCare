@@ -18,7 +18,7 @@
 
 #define uS_TO_M_FACTOR 1000000
 #define TIME_TO_SLEEP 10
-#define Period_minute_time 0.1
+#define Period_minute_time 3
 
 #define LENGTH(x) (strlen(x) + 1)
 #define EEPROM_SIZE 200

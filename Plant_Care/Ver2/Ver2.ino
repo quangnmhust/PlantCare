@@ -23,7 +23,7 @@
 
 #define uS_TO_M_FACTOR 1000000
 #define TIME_TO_SLEEP 10
-#define Period_minute_time 5
+#define Period_minute_time 10
 
 #define LENGTH(x) (strlen(x) + 1)
 #define EEPROM_SIZE 200
@@ -49,8 +49,12 @@
 
 // const char* ssid = "minhquangng";
 // const char* password =  "TBH123456";
-String ssid = "minhquangng";
-String pss = "TBH123456";
+// String ssid = "minhquangng";
+// String pss = "TBH123456";
+String ssid = "IOTTEST";
+String pss = "123456789";
+// String ssid = "TTSV_Mobile";
+// String pss = "ttsv@2020";
 const int myChannelNumber = 2515584;
 const char * myWriteAPIKey = "8TGOAVM92D494KS1";
 const char* mqttServer = "sanslab.ddns.net";
@@ -143,7 +147,9 @@ byte sensorResponse[NUMBER_BYTES_RESPONES];
 char SD_Frame_buff[126];
 char SD_Frame[126];
 char time_buff[64];
-RTC_DATA_ATTR int errorCount = 0;
+char sd_path[16];
+
+RTC_DATA_ATTR int espCount = 0;
 // String ssid, pss;
 
 
@@ -610,6 +616,12 @@ void esp_start(void){
 void setup() {
   esp_start();
 
+  if (!EEPROM.begin(EEPROM_SIZE))
+  {
+    Serial.println("failed to initialise EEPROM"); delay(1000000);
+  }
+  // EEPROM.write(0, 0);
+
   I2C_semaphore = xSemaphoreCreateCountingStatic( 4, 4, &xSemaphoreBuffer );
   if (I2C_semaphore != NULL)
   {
@@ -657,9 +669,15 @@ void setup() {
        Serial.println("Low precision");
        break;
   }
+  espCount = EEPROM.read(0);
+  espCount++;
+  EEPROM.write(0, espCount);
+  memset(sd_path,0,16);
+  sprintf(sd_path, "/data%02d.csv", espCount);
+  Serial.println(sd_path);
   H_Sens.setHeater(SHT4X_NO_HEATER);
-  // lightMeter.begin();
-  writeFile(SD, "/data.csv", "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n");
+  lightMeter.begin();
+  writeFile(SD, sd_path, "Date,Month,Year,Hour,Min,Sec,Lux,E_Tem,E_Hum,S_Tem,S_Hum,S_pH,S_Ni,S_Ph,S_Ka\n");
   // ThingSpeak.begin(mqttclient);
 
   xTaskCreatePinnedToCore(Control_task, "Control_task", 1024 * 4, NULL, 2, &Control_task_handle, tskNO_AFFINITY);
@@ -791,15 +809,11 @@ void Display_task(void *pvParameters){
         display.setCursor(0,22);
         display.println("Env-T/H: " + String(SensorData.Env_temp)+"/"+String(SensorData.Env_Humi));
         lcd.setCursor(0, 1);
-        lcd.print("Env-T/H: ");
-        lcd.setCursor(8, 1);
-        lcd.print(SensorData.Env_temp);
-        lcd.setCursor(13, 1);
-        lcd.print("/");
-        lcd.setCursor(14, 1);
-        lcd.print(SensorData.Env_Humi);
+        lcd.print(String(SensorData.Env_Lux)+"/"+String(SensorData.Env_temp)+"/"+String(SensorData.Env_Humi));
         display.setCursor(0,33);
         display.println("Soi-T/H: " + String(SensorData.Soil_temp)+"/"+String(SensorData.Soil_humi));
+        lcd.setCursor(0, 2);
+        lcd.print(String(SensorData.Soil_temp)+"/"+String(SensorData.Soil_humi)+"/"+ String(SensorData.Soil_pH));
         display.setCursor(0,44);
         display.println("Soi-pH: " + String(SensorData.Soil_pH));
         lcd.setCursor(0, 3);
@@ -922,7 +936,7 @@ void RF24_task(void *pvParameters){
 
 void getData_task(void *pvParameters){
   Serial.println(pcTaskGetName(NULL));
-  vTaskDelay(200/portTICK_PERIOD_MS);
+  vTaskDelay(1000/portTICK_PERIOD_MS);
   Data_t temp_data = {};
   while(1){
     temp_data.Env_Lux = SensorData.Env_Lux;
@@ -941,13 +955,36 @@ void getData_task(void *pvParameters){
     temp_data.Time_min = SensorData.Time_min;
     temp_data.Time_sec = SensorData.Time_sec;
 
+    ThingSpeak.setField(1, temp_data.Env_Lux);
+    ThingSpeak.setField(2, temp_data.Env_temp);
+    ThingSpeak.setField(3, temp_data.Env_Humi);
+    ThingSpeak.setField(4, temp_data.Soil_humi);
+    ThingSpeak.setField(5, temp_data.Soil_pH);
+    ThingSpeak.setField(6, temp_data.Soil_Nito);
+    ThingSpeak.setField(7, temp_data.Soil_Phosp);
+    ThingSpeak.setField(8, temp_data.Soil_Kali);
+
+    // int x = 0;
+    // while(x != 200){
+    //   x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+    //   if(x == 200){
+    //     Serial.println("Channel update successful.");
+    //   }
+    //   else{
+    //     Serial.println("Problem updating channel. HTTP error code " + String(x));
+    //   }
+    //   vTaskDelay(2000/portTICK_PERIOD_MS);
+    // }
+
+    
+
     if (xQueueSendToBack(data_queue, (void *)&temp_data, 1000/portMAX_DELAY) == pdTRUE  ){
 			Serial.print("MQTT data waiting to read ");
       Serial.print(uxQueueMessagesWaiting(data_queue));
       Serial.print(", Available space ");
       Serial.println(uxQueueSpacesAvailable(data_queue));
       // xTaskCreatePinnedToCore(MQTT_task, "MQTT_task", 1024 * 4, NULL, 7, &MQTT_task_handle, tskNO_AFFINITY);
-      xTaskCreatePinnedToCore(RF24_task, "RF24_task", 1024 * 4, NULL, 7, &RF24_task_handle, tskNO_AFFINITY);
+      // xTaskCreatePinnedToCore(RF24_task, "RF24_task", 1024 * 4, NULL, 7, &RF24_task_handle, tskNO_AFFINITY);
 		}
 
     memset(SD_Frame_buff, 0, 126);
@@ -975,7 +1012,7 @@ void getData_task(void *pvParameters){
     if(xSemaphoreTake(MQTT_semaphore, portTICK_PERIOD_MS) == pdTRUE){
       digitalWrite(SD_CS, LOW);
       vTaskDelay(10/portTICK_PERIOD_MS);
-      appendFile(SD, "/data.csv", SD_Frame_buff);
+      appendFile(SD, sd_path, SD_Frame_buff);
       digitalWrite(SD_CS, HIGH);
       xSemaphoreGive(MQTT_semaphore);
     }
@@ -989,16 +1026,16 @@ void Control_task(void *pvParameters){
   int count= 0;
   while(1){
     vTaskDelay(100/portTICK_PERIOD_MS);
-  // xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 5, &RS485_task_handle, tskNO_AFFINITY);
-  xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 5, &SHT25_task_handle, tskNO_AFFINITY);
-  // xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 5, &BH1750_task_handle, tskNO_AFFINITY);
-  xTaskCreatePinnedToCore(getData_task, "getData_task", 1024 * 4, NULL, 6, &getData_task_handle, tskNO_AFFINITY);
-  // xTaskCreatePinnedToCore(RF24_task, "RF24_task", 1024 * 4, NULL, 7, &RF24_task_handle, tskNO_AFFINITY);
-  count++;
-  vTaskDelay(Period_minute_time*60000-100/portTICK_PERIOD_MS);
-  Serial.println(count);
-  if(count == 25){
-    ESP.restart();
-  }
+    xTaskCreatePinnedToCore(RS485_task, "RS485_Task", 1024 * 4, NULL, 5, &RS485_task_handle, tskNO_AFFINITY);
+    xTaskCreatePinnedToCore(SHT25_task, "SHT25_Task", 1024 * 4, NULL, 5, &SHT25_task_handle, tskNO_AFFINITY);
+    xTaskCreatePinnedToCore(BH1750_task, "BH1750_Task", 1024 * 4, NULL, 5, &BH1750_task_handle, tskNO_AFFINITY);
+    xTaskCreatePinnedToCore(getData_task, "getData_task", 1024 * 4, NULL, 6, &getData_task_handle, tskNO_AFFINITY);
+    // xTaskCreatePinnedToCore(RF24_task, "RF24_task", 1024 * 4, NULL, 7, &RF24_task_handle, tskNO_AFFINITY);
+    count++;
+    vTaskDelay(Period_minute_time*60000-100/portTICK_PERIOD_MS);
+    Serial.println(count);
+    // if(count == 25){
+    //   ESP.restart();
+    // }
   }
 }

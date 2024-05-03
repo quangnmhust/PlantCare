@@ -19,8 +19,12 @@
 
 // String ssid = "minhquangng";
 // String pss = "TBH123456";
-String ssid = "Tom Bi";
-String pss = "TBH123456";
+// String ssid = "Tom Bi";
+// String pss = "TBH123456";
+// String ssid = "IOTTEST";
+// String pss = "123456789";
+String ssid = "TTSV_Mobile";
+String pss = "ttsv@2020";
 const int myChannelNumber = 2515584;
 const char * myWriteAPIKey = "8TGOAVM92D494KS1";
 const char* mqttServer = "sanslab.ddns.net";
@@ -59,7 +63,7 @@ typedef struct Data_manager_full{
 
 volatile Data_f_t data_full;
 volatile bool mqtt_check;
-volatile bool http_check;
+volatile bool http_check = 0;
 
 typedef struct Data_manager{
   int index;
@@ -239,9 +243,9 @@ void setup(void){
   WiFi.mode(WIFI_STA);
   esp_connect_wifi();
   ThingSpeak.begin(mqttclient);
-  esp_connect_mqtt();
+  // esp_connect_mqtt();
 
-  RTC_DATA_ATTR data_queue = xQueueCreate(20, sizeof(Data_t));
+  data_queue = xQueueCreate(20, sizeof(Data_t));
   if (data_queue != NULL)
   {
     Serial.println("Data_queue created");
@@ -414,17 +418,29 @@ void MQTT_task(void *pvParameters){
           ThingSpeak.setField(8, data_full.Soil_Kali);
 
           // if(xSemaphoreTake(MQTT_semaphore, portTICK_PERIOD_MS) == pdTRUE){
-            mqtt_check = client.publish("modelParam",mqttMessage);
-            Serial.println(mqtt_check);
+            // mqtt_check = client.publish("modelParam",mqttMessage);
+            // Serial.println(mqtt_check);
 
-            int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
-            if(x == 200){
-              Serial.println("Channel update successful.");
-              http_check = 1;
-            }
-            else{
-              Serial.println("Problem updating channel. HTTP error code " + String(x));
-              http_check = 0;
+            // int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+            // if(x == 200){
+            //   Serial.println("Channel update successful.");
+            //   http_check = 1;
+            // }
+            // else{
+            //   Serial.println("Problem updating channel. HTTP error code " + String(x));
+            //   http_check = 0;
+            // }
+            esp_connect_wifi();
+            while(!http_check){
+              int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+              if(x == 200){
+                Serial.println("Channel update successful.");
+                http_check = 1;
+              }
+              else{
+                Serial.println("Problem updating channel. HTTP error code " + String(x));
+                http_check = 0;
+              }
             }
             // while(!strcmp(mqttMessage, mqttMessage_check)){
             // client.publish("modelParam",mqttMessage);

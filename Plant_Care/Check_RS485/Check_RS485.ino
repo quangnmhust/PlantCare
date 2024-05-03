@@ -1,4 +1,4 @@
-#include <SoftwareSerial.h>
+// #include <SoftwareSerial.h>
 
 #define ADDRESS 0x02
 #define FUNCTION_CODE 0x03
@@ -35,7 +35,7 @@ float soilK;
 void getSoilSensorParameter(){
     soilHumi = convertBytesToFloat(sensorResponse[3], sensorResponse[4]);
     soilTemp = convertBytesToFloat(sensorResponse[5], sensorResponse[6]);
-    soilConduct = convertBytesToFloat(sensorResponse[7], sensorResponse[8]);
+    // soilConduct = convertBytesToFloat(sensorResponse[7], sensorResponse[8]);
     soilPH = convertBytesToFloat(sensorResponse[9], sensorResponse[10]);
     soilN = convertBytesToFloat(sensorResponse[11], sensorResponse[12]);
     soilP = convertBytesToFloat(sensorResponse[13], sensorResponse[14]);
@@ -54,9 +54,9 @@ void printSoilParameters(){
     Serial.println(" oC");
 
 
-    Serial.print("Conductivity: ");
-    Serial.print(soilConduct);
-    Serial.println(" uS/cm");
+    // Serial.print("Conductivity: ");
+    // Serial.print(soilConduct);
+    // Serial.println(" uS/cm");
 
 
     Serial.print("pH hiện tại: ");
@@ -80,7 +80,7 @@ void printSoilParameters(){
 }
 
 
-SoftwareSerial mod(2, 3); // Software serial for RS485 communication
+// SoftwareSerial mod(2, 3); // Software serial for RS485 communication
  
 void setup()
 {
