@@ -1,0 +1,9 @@
+{
+  "cmake.configureOnOpen": false,
+  "files.associations": {
+    "esp_adc_cal.h": "c",
+    "esp_err.h": "c",
+    "sht4x.h": "c",
+    "bh1750.h": "c"
+  }
+}
