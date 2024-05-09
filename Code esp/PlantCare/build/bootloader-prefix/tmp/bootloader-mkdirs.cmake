@@ -4,16 +4,16 @@
 cmake_minimum_required(VERSION 3.5)
 
 file(MAKE_DIRECTORY
-  "C:/Espressif/frameworks/esp-idf-v4.4.7/components/bootloader/subproject"
-  "C:/Espressif/frameworks/PlantCare/build/bootloader"
-  "C:/Espressif/frameworks/PlantCare/build/bootloader-prefix"
-  "C:/Espressif/frameworks/PlantCare/build/bootloader-prefix/tmp"
-  "C:/Espressif/frameworks/PlantCare/build/bootloader-prefix/src/bootloader-stamp"
-  "C:/Espressif/frameworks/PlantCare/build/bootloader-prefix/src"
-  "C:/Espressif/frameworks/PlantCare/build/bootloader-prefix/src/bootloader-stamp"
+  "D:/Espressif/frameworks/esp-idf-v4.4.3/components/bootloader/subproject"
+  "D:/Espressif/frameworks/PlantCare/build/bootloader"
+  "D:/Espressif/frameworks/PlantCare/build/bootloader-prefix"
+  "D:/Espressif/frameworks/PlantCare/build/bootloader-prefix/tmp"
+  "D:/Espressif/frameworks/PlantCare/build/bootloader-prefix/src/bootloader-stamp"
+  "D:/Espressif/frameworks/PlantCare/build/bootloader-prefix/src"
+  "D:/Espressif/frameworks/PlantCare/build/bootloader-prefix/src/bootloader-stamp"
 )
 
 set(configSubDirs )
 foreach(subDir IN LISTS configSubDirs)
-    file(MAKE_DIRECTORY "C:/Espressif/frameworks/PlantCare/build/bootloader-prefix/src/bootloader-stamp/${subDir}")
+    file(MAKE_DIRECTORY "D:/Espressif/frameworks/PlantCare/build/bootloader-prefix/src/bootloader-stamp/${subDir}")
 endforeach()

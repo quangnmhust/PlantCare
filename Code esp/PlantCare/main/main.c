@@ -353,7 +353,7 @@ void send_data_http(void *pvParameters){
                         if (xSemaphoreTake(send_data_mutex, portMAX_DELAY) == pdTRUE){   
                             memset(REQUEST, 0, 512);
 
-                            sprintf(REQUEST, "GET https://api.thingspeak.com/update?api_key=%s&field1=%.2f&field2=%.2f&field3=%d&field4=%.1f\n\n\n\n", API_KEY, data_http.Env_temp, data_http.Env_Humi, data_http.Env_Lux,data_http.Soil_humi);
+                            sprintf(REQUEST, "GET https://api.thingspeak.com/update?api_key=%s&field1=%.2f&field2=%.2f&field3=%d\n\n\n", API_KEY, data_http.Env_temp, data_http.Env_Humi, data_http.Env_Lux);
 
                             ESP_LOGI(__func__, "%s",REQUEST);
 
@@ -397,10 +397,10 @@ void send_data_mqtt(void *pvParameters){
                                 data_mqtt.time_data.time_sec,
 
 								data_mqtt.Soil_temp,
-								data_mqtt.Soil_humi,
+								0.00,
 								0.00, 0.00, 0.00, 0.00,
 								data_mqtt.Env_temp,
-                                data_mqtt.Env_temp,
+                                data_mqtt.Env_Humi,
                                 data_mqtt.Env_Lux);
 						ESP_LOGI(__func__, "%s",mqttMessage);
 						error = esp_mqtt_client_publish(mqttClient_handle, (const char *)CONFIG_MQTT_TOPIC, mqttMessage, 0, 0, 0);
