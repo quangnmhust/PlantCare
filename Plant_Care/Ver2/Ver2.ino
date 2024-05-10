@@ -47,16 +47,16 @@
 #define RF_CS 15
 #define SD_CS 5
 
-// const char* ssid = "minhquangng";
-// const char* password =  "TBH123456";
+const char* ssid = "Tom Bi";
+const char* password =  "TBH123456";
 // String ssid = "minhquangng";
 // String pss = "TBH123456";
-String ssid = "IOTTEST";
-String pss = "123456789";
+// String ssid = "IOTTEST";
+// String pss = "123456789";
 // String ssid = "TTSV_Mobile";
 // String pss = "ttsv@2020";
-const int myChannelNumber = 2515584;
-const char *myWriteAPIKey = "8TGOAVM92D494KS1";
+const int myChannelNumber = 2539374;
+const char *myWriteAPIKey = "XHYKSL332GNQJZD9";
 const char *mqttServer = "sanslab.ddns.net";
 const int mqttPort = 1883;
 const char *mqttUser = "admin";

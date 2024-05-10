@@ -23,16 +23,6 @@
         "children": [],
         "depends_on": null,
         "help": null,
-        "id": "IDF_CI_BUILD",
-        "name": "IDF_CI_BUILD",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
         "id": "IDF_TARGET_ARCH_RISCV",
         "name": "IDF_TARGET_ARCH_RISCV",
         "range": null,
@@ -388,72 +378,24 @@
                 "type": "int"
             },
             {
-                "children": [
-                    {
-                        "children": [],
-                        "depends_on": "IDF_TARGET_ESP32 && (ESPTOOLPY_FLASHMODE_QIO || ESPTOOLPY_FLASHMODE_QOUT)",
-                        "help": "This setting is only used if the SPI flash pins have been overridden by setting the eFuses\nSPI_PAD_CONFIG_xxx, and the SPI flash mode is QIO or QOUT.\n\nWhen this is the case, the eFuse config only defines 3 of the 4 Quad I/O data pins. The WP pin (aka\nESP32 pin \"SD_DATA_3\" or SPI flash pin \"IO2\") is not specified in eFuse. The same pin is also used\nfor external SPIRAM if it is enabled.\n\nIf this config item is set to N (default), the correct WP pin will be automatically used for any\nEspressif chip or module with integrated flash. If a custom setting is needed, set this config item to\nY and specify the GPIO number connected to the WP.",
-                        "id": "BOOTLOADER_SPI_CUSTOM_WP_PIN",
-                        "name": "BOOTLOADER_SPI_CUSTOM_WP_PIN",
-                        "range": null,
-                        "title": "Use custom SPI Flash WP Pin when flash pins set in eFuse (read help)",
-                        "type": "bool"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": "IDF_TARGET_ESP32 && (ESPTOOLPY_FLASHMODE_QIO || ESPTOOLPY_FLASHMODE_QOUT)",
-                        "help": "The option \"Use custom SPI Flash WP Pin\" must be set or this value is ignored\n\nIf burning a customized set of SPI flash pins in eFuse and using QIO or QOUT mode for flash, set this\nvalue to the GPIO number of the SPI flash WP pin.",
-                        "id": "BOOTLOADER_SPI_WP_PIN",
-                        "name": "BOOTLOADER_SPI_WP_PIN",
-                        "range": null,
-                        "title": "Custom SPI Flash WP Pin",
-                        "type": "int"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": null,
-                        "help": "This will force 2nd bootloader to be loaded by DOUT mode, and will restore Dummy Cycle setting by\nresetting the Flash",
-                        "id": "BOOTLOADER_FLASH_DC_AWARE",
-                        "name": "BOOTLOADER_FLASH_DC_AWARE",
-                        "range": null,
-                        "title": "Allow app adjust Dummy Cycle bits in SPI Flash for higher frequency (READ HELP FIRST)",
-                        "type": "bool"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": null,
-                        "help": "Perform the startup flow recommended by XMC. Please consult XMC for the details of this flow.\nXMC chips will be forbidden to be used, when this option is disabled.\n\nDON'T DISABLE THIS UNLESS YOU KNOW WHAT YOU ARE DOING.\n\ncomment \"Features below require specific hardware (READ DOCS FIRST!)\"",
-                        "id": "BOOTLOADER_FLASH_XMC_SUPPORT",
-                        "name": "BOOTLOADER_FLASH_XMC_SUPPORT",
-                        "range": null,
-                        "title": "Enable the support for flash chips of XMC (READ DOCS FIRST)",
-                        "type": "bool"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": null,
-                        "help": "This is a helper config for 32bits address flash. Invisible for users.",
-                        "id": "BOOTLOADER_FLASH_32BIT_ADDR",
-                        "name": "BOOTLOADER_FLASH_32BIT_ADDR",
-                        "range": null,
-                        "title": null,
-                        "type": "bool"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": null,
-                        "help": null,
-                        "id": "BOOTLOADER_CACHE_32BIT_ADDR_OCTAL_FLASH",
-                        "name": "BOOTLOADER_CACHE_32BIT_ADDR_OCTAL_FLASH",
-                        "range": null,
-                        "title": null,
-                        "type": "bool"
-                    }
-                ],
-                "depends_on": null,
-                "id": "bootloader-config-serial-flash-configurations",
-                "title": "Serial Flash Configurations",
-                "type": "menu"
+                "children": [],
+                "depends_on": "IDF_TARGET_ESP32 && (ESPTOOLPY_FLASHMODE_QIO || ESPTOOLPY_FLASHMODE_QOUT)",
+                "help": "This setting is only used if the SPI flash pins have been overridden by setting the eFuses\nSPI_PAD_CONFIG_xxx, and the SPI flash mode is QIO or QOUT.\n\nWhen this is the case, the eFuse config only defines 3 of the 4 Quad I/O data pins. The WP pin (aka\nESP32 pin \"SD_DATA_3\" or SPI flash pin \"IO2\") is not specified in eFuse. The same pin is also used\nfor external SPIRAM if it is enabled.\n\nIf this config item is set to N (default), the correct WP pin will be automatically used for any\nEspressif chip or module with integrated flash. If a custom setting is needed, set this config item to\nY and specify the GPIO number connected to the WP.",
+                "id": "BOOTLOADER_SPI_CUSTOM_WP_PIN",
+                "name": "BOOTLOADER_SPI_CUSTOM_WP_PIN",
+                "range": null,
+                "title": "Use custom SPI Flash WP Pin when flash pins set in eFuse (read help)",
+                "type": "bool"
+            },
+            {
+                "children": [],
+                "depends_on": "IDF_TARGET_ESP32 && (ESPTOOLPY_FLASHMODE_QIO || ESPTOOLPY_FLASHMODE_QOUT)",
+                "help": "The option \"Use custom SPI Flash WP Pin\" must be set or this value is ignored\n\nIf burning a customized set of SPI flash pins in eFuse and using QIO or QOUT mode for flash, set this\nvalue to the GPIO number of the SPI flash WP pin.",
+                "id": "BOOTLOADER_SPI_WP_PIN",
+                "name": "BOOTLOADER_SPI_WP_PIN",
+                "range": null,
+                "title": "Custom SPI Flash WP Pin",
+                "type": "int"
             },
             {
                 "children": [
@@ -743,6 +685,16 @@
                 "range": null,
                 "title": "Reserve RTC FAST memory for custom purposes",
                 "type": "bool"
+            },
+            {
+                "children": [],
+                "depends_on": null,
+                "help": "Perform the startup flow recommended by XMC. Please consult XMC for the details of this flow.\nXMC chips will be forbidden to be used, when this option is disabled.\n\nDON'T DISABLE THIS UNLESS YOU KNOW WHAT YOU ARE DOING.",
+                "id": "BOOTLOADER_FLASH_XMC_SUPPORT",
+                "name": "BOOTLOADER_FLASH_XMC_SUPPORT",
+                "range": null,
+                "title": "Enable the support for flash chips of XMC (READ HELP FIRST)",
+                "type": "bool"
             }
         ],
         "depends_on": null,
@@ -784,17 +736,7 @@
             },
             {
                 "children": [],
-                "depends_on": "IDF_TARGET_ESP32",
-                "help": null,
-                "id": "SECURE_ESP32_SUPPORTS_RSA",
-                "name": "SECURE_ESP32_SUPPORTS_RSA",
-                "range": null,
-                "title": null,
-                "type": "bool"
-            },
-            {
-                "children": [],
-                "depends_on": "SECURE_ESP32_SUPPORTS_RSA || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32C3 || IDF_TARGET_ESP32S3",
+                "depends_on": "ESP32_REV_MIN_3 || IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32C3 || IDF_TARGET_ESP32S3",
                 "help": null,
                 "id": "SECURE_BOOT_SUPPORTS_RSA",
                 "name": "SECURE_BOOT_SUPPORTS_RSA",
@@ -905,7 +847,7 @@
                         "type": "choice"
                     }
                 ],
-                "depends_on": "IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || (IDF_TARGET_ESP32C3 && ESP32C3_REV_MIN_FULL >= 3) || IDF_TARGET_ESP32S3",
+                "depends_on": "IDF_TARGET_ESP32 || IDF_TARGET_ESP32S2 || ESP32C3_REV_MIN >= 3 || IDF_TARGET_ESP32S3",
                 "help": "Build a bootloader which enables Secure Boot on first boot.\n\nOnce enabled, Secure Boot will not boot a modified bootloader. The bootloader will only load a partition\ntable or boot an app if the data has a verified digital signature. There are implications for reflashing\nupdated apps once secure boot is enabled.\n\nWhen enabling secure boot, JTAG and ROM BASIC Interpreter are permanently disabled by default.",
                 "id": "SECURE_BOOT",
                 "name": "SECURE_BOOT",
@@ -1218,7 +1160,7 @@
                     {
                         "children": [],
                         "depends_on": "SECURE_TARGET_HAS_SECURE_ROM_DL_MODE && <choice SECURE_UART_ROM_DL_MODE>",
-                        "help": "If set, during startup the app will burn an eFuse bit to permanently switch the UART ROM\nDownload Mode into a separate Secure Download mode. This option can only work if\nDownload Mode is not already disabled by eFuse.\n\nSecure Download mode limits the use of Download Mode functions to update SPI config,\nchanging baud rate, basic flash write and a command to return a summary of currently\nenabled security features (`get_security_info`).\n\nSecure Download mode is not compatible with the esptool.py flasher stub feature,\nespefuse.py, read/writing memory or registers, encrypted download, or any other\nfeatures that interact with unsupported Download Mode commands.\n\nSecure Download mode should be enabled in any application where Flash Encryption\nand/or Secure Boot is enabled. Disabling this option does not immediately cancel\nthe benefits of the security features, but it increases the potential \"attack\nsurface\" for an attacker to try and bypass them with a successful physical attack.\n\nIt is also possible to enable secure download mode at runtime by calling\nesp_efuse_enable_rom_secure_download_mode()\n\nNote: Secure Download mode is not available for ESP32 (includes revisions till ECO3).",
+                        "help": "If set, during startup the app will burn an eFuse bit to permanently switch the UART ROM\nDownload Mode into a separate Secure Download mode. This option can only work if\nDownload Mode is not already disabled by eFuse.\n\nSecure Download mode limits the use of Download Mode functions to simple flash read,\nwrite and erase operations, plus a command to return a summary of currently enabled\nsecurity features.\n\nSecure Download mode is not compatible with the esptool.py flasher stub feature,\nespefuse.py, read/writing memory or registers, encrypted download, or any other\nfeatures that interact with unsupported Download Mode commands.\n\nSecure Download mode should be enabled in any application where Flash Encryption\nand/or Secure Boot is enabled. Disabling this option does not immediately cancel\nthe benefits of the security features, but it increases the potential \"attack\nsurface\" for an attacker to try and bypass them with a successful physical attack.\n\nIt is also possible to enable secure download mode at runtime by calling\nesp_efuse_enable_rom_secure_download_mode()\n\nNote: Secure Download mode is not available for ESP32 (includes revisions till ECO3).",
                         "id": "SECURE_ENABLE_SECURE_ROM_DL_MODE",
                         "name": "SECURE_ENABLE_SECURE_ROM_DL_MODE",
                         "range": null,
@@ -1236,7 +1178,7 @@
                         "type": "bool"
                     }
                 ],
-                "depends_on": "(SECURE_BOOT_V2_ENABLED || SECURE_FLASH_ENC_ENABLED) && !(IDF_TARGET_ESP32 && ESP32_REV_MIN_FULL < 300)",
+                "depends_on": "(SECURE_BOOT_V2_ENABLED || SECURE_FLASH_ENC_ENABLED) && (!IDF_TARGET_ESP32 || ESP32_REV_MIN_3)",
                 "help": null,
                 "id": "security-features-uart-rom-download-mode",
                 "name": "SECURE_UART_ROM_DL_MODE",
@@ -1530,25 +1472,15 @@
                 "type": "string"
             },
             {
-                "children": [],
-                "depends_on": null,
-                "help": null,
-                "id": "ESPTOOLPY_S3_STR",
-                "name": "ESPTOOLPY_S3_STR",
-                "range": null,
-                "title": null,
-                "type": "bool"
-            },
-            {
                 "children": [
                     {
                         "children": [],
-                        "depends_on": "ESPTOOLPY_S3_STR && (SPI_FLASH_HPM_ON || ESPTOOLPY_OCT_FLASH) && <choice ESPTOOLPY_FLASHFREQ>",
-                        "help": "- Optional feature for QSPI Flash. Read docs and enable `CONFIG_SPI_FLASH_HPM_ENA` first!",
+                        "depends_on": "IDF_TARGET_ESP32S3 && ESPTOOLPY_FLASH_SAMPLE_MODE_STR && <choice ESPTOOLPY_FLASHFREQ>",
+                        "help": null,
                         "id": "ESPTOOLPY_FLASHFREQ_120M",
                         "name": "ESPTOOLPY_FLASHFREQ_120M",
                         "range": null,
-                        "title": "120 MHz (READ DOCS FIRST)",
+                        "title": "120 MHz",
                         "type": "bool"
                     },
                     {
@@ -2427,7 +2359,7 @@
                                 "id": "ESP32_REV_MIN_0",
                                 "name": "ESP32_REV_MIN_0",
                                 "range": null,
-                                "title": "Rev v0.0 (ECO0)",
+                                "title": "Rev 0",
                                 "type": "bool"
                             },
                             {
@@ -2437,17 +2369,7 @@
                                 "id": "ESP32_REV_MIN_1",
                                 "name": "ESP32_REV_MIN_1",
                                 "range": null,
-                                "title": "Rev v1.0 (ECO1)",
-                                "type": "bool"
-                            },
-                            {
-                                "children": [],
-                                "depends_on": "<choice ESP32_REV_MIN>",
-                                "help": null,
-                                "id": "ESP32_REV_MIN_1_1",
-                                "name": "ESP32_REV_MIN_1_1",
-                                "range": null,
-                                "title": "Rev v1.1 (ECO1.1)",
+                                "title": "Rev 1",
                                 "type": "bool"
                             },
                             {
@@ -2457,7 +2379,7 @@
                                 "id": "ESP32_REV_MIN_2",
                                 "name": "ESP32_REV_MIN_2",
                                 "range": null,
-                                "title": "Rev v2.0 (ECO2)",
+                                "title": "Rev 2",
                                 "type": "bool"
                             },
                             {
@@ -2467,22 +2389,12 @@
                                 "id": "ESP32_REV_MIN_3",
                                 "name": "ESP32_REV_MIN_3",
                                 "range": null,
-                                "title": "Rev v3.0 (ECO3)",
-                                "type": "bool"
-                            },
-                            {
-                                "children": [],
-                                "depends_on": "<choice ESP32_REV_MIN>",
-                                "help": null,
-                                "id": "ESP32_REV_MIN_3_1",
-                                "name": "ESP32_REV_MIN_3_1",
-                                "range": null,
-                                "title": "Rev v3.1 (ECO4)",
+                                "title": "Rev 3",
                                 "type": "bool"
                             }
                         ],
                         "depends_on": null,
-                        "help": "Required minimum chip revision. ESP-IDF will check for it and\nreject to boot if the chip revision fails the check.\nThis ensures the chip used will have some modifications (features, or bugfixes).\n\nThe complied binary will only support chips above this revision,\nthis will also help to reduce binary size.",
+                        "help": "Minimum revision that ESP-IDF would support.\nESP-IDF performs different strategy on different esp32 revision.",
                         "id": "component-config-esp32-specific-minimum-supported-esp32-revision",
                         "name": "ESP32_REV_MIN",
                         "title": "Minimum Supported ESP32 Revision",
@@ -2494,66 +2406,6 @@
                         "help": null,
                         "id": "ESP32_REV_MIN",
                         "name": "ESP32_REV_MIN",
-                        "range": null,
-                        "title": null,
-                        "type": "int"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": null,
-                        "help": null,
-                        "id": "ESP32_REV_MIN_FULL",
-                        "name": "ESP32_REV_MIN_FULL",
-                        "range": null,
-                        "title": null,
-                        "type": "int"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": null,
-                        "help": null,
-                        "id": "ESP_REV_MIN_FULL",
-                        "name": "ESP_REV_MIN_FULL",
-                        "range": null,
-                        "title": null,
-                        "type": "int"
-                    },
-                    {
-                        "children": [
-                            {
-                                "children": [],
-                                "depends_on": "<choice ESP32_REV_MAX_FULL_STR>",
-                                "help": null,
-                                "id": "ESP32_REV_MAX_FULL_STR_OPT",
-                                "name": "ESP32_REV_MAX_FULL_STR_OPT",
-                                "range": null,
-                                "title": "Rev v3.99",
-                                "type": "bool"
-                            }
-                        ],
-                        "depends_on": null,
-                        "help": null,
-                        "id": "component-config-esp32-specific-maximum-supported-esp32-revision",
-                        "name": "ESP32_REV_MAX_FULL_STR",
-                        "title": "Maximum Supported ESP32 Revision",
-                        "type": "choice"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": null,
-                        "help": null,
-                        "id": "ESP32_REV_MAX_FULL",
-                        "name": "ESP32_REV_MAX_FULL",
-                        "range": null,
-                        "title": null,
-                        "type": "int"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": null,
-                        "help": null,
-                        "id": "ESP_REV_MAX_FULL",
-                        "name": "ESP_REV_MAX_FULL",
                         "range": null,
                         "title": null,
                         "type": "int"
@@ -2855,7 +2707,7 @@
                                     },
                                     {
                                         "children": [],
-                                        "depends_on": "(SPIRAM_USE_MEMMAP || SPIRAM_USE_CAPS_ALLOC || SPIRAM_USE_MALLOC) && ESP32_REV_MIN_FULL < 300 && ESP32_SPIRAM_SUPPORT",
+                                        "depends_on": "(SPIRAM_USE_MEMMAP || SPIRAM_USE_CAPS_ALLOC || SPIRAM_USE_MALLOC) && ESP32_REV_MIN < 3 && ESP32_SPIRAM_SUPPORT",
                                         "help": "Revision 1 of the ESP32 has a bug that can cause a write to PSRAM not to take place in some situations\nwhen the cache line needs to be fetched from external RAM and an interrupt occurs. This enables a\nfix in the compiler (-mfix-esp32-psram-cache-issue) that makes sure the specific code that is\nvulnerable to this will not be emitted.\n\nThis will also not use any bits of newlib that are located in ROM, opting for a version that is\ncompiled with the workaround and located in flash instead.\n\nThe workaround is not required for ESP32 revision 3 and above.",
                                         "id": "SPIRAM_CACHE_WORKAROUND",
                                         "name": "SPIRAM_CACHE_WORKAROUND",
@@ -3568,7 +3420,7 @@
                                 "type": "bool"
                             }
                         ],
-                        "depends_on": "ESP32_RTC_CLK_SRC_EXT_CRYS && ESP32_REV_MIN_FULL < 200",
+                        "depends_on": "ESP32_RTC_CLK_SRC_EXT_CRYS && ESP32_REV_MIN <= 1",
                         "help": "With some 32kHz crystal configurations, the X32N and X32P pins may not have enough\ndrive strength to keep the crystal oscillating. Choose the method to provide\nadditional current from touchpad 9 to the external 32kHz crystal. Note that\nthe deep sleep current is slightly high (4-5uA) and the touchpad and the\nwakeup sources of both touchpad and ULP are not available in method 1 and method 2.\n\nThis problem is fixed in ESP32 ECO 3, so this workaround is not needed. Setting the\nproject configuration to minimum revision ECO3 will disable this option, , allow\nall wakeup sources, and save some code size.\n\n- \"None\" option will not provide additional current to external crystal\n- \"Method 1\" option can't ensure 100% to solve the external 32k crystal start failed\n  issue, but the touchpad can work in this method.\n- \"Method 2\" option can solve the external 32k issue, but the touchpad can't work\n  in this method.",
                         "id": "component-config-esp32-specific-additional-current-for-external-32khz-crystal",
                         "name": "ESP32_RTC_EXT_CRYST_ADDIT_CURRENT_METHOD",
@@ -3879,16 +3731,6 @@
                                 "range": null,
                                 "title": null,
                                 "type": "int"
-                            },
-                            {
-                                "children": [],
-                                "depends_on": "IDF_TARGET_ESP32",
-                                "help": "If you have an invalid MAC CRC (ESP_ERR_INVALID_CRC) problem\nand you still want to use this chip, you can enable this option to bypass such an error.\nThis applies to both MAC_FACTORY and CUSTOM_MAC efuses.",
-                                "id": "ESP_MAC_IGNORE_MAC_CRC_ERROR",
-                                "name": "ESP_MAC_IGNORE_MAC_CRC_ERROR",
-                                "range": null,
-                                "title": "Ignore MAC CRC error (not recommended)",
-                                "type": "bool"
                             }
                         ],
                         "depends_on": null,
@@ -3957,39 +3799,11 @@
                                 "range": null,
                                 "title": "All pins of mspi need pull up",
                                 "type": "bool"
-                            },
-                            {
-                                "children": [],
-                                "depends_on": null,
-                                "help": "When using rtc gpio wakeup source during deepsleep without external pull-up/downs, you may want to\nmake use of the internal ones.",
-                                "id": "ESP_SLEEP_GPIO_ENABLE_INTERNAL_RESISTORS",
-                                "name": "ESP_SLEEP_GPIO_ENABLE_INTERNAL_RESISTORS",
-                                "range": null,
-                                "title": "Allow to enable internal pull-up/downs for the Deep-Sleep wakeup IOs",
-                                "type": "bool"
                             }
                         ],
                         "depends_on": null,
                         "id": "component-config-hardware-settings-sleep-config",
                         "title": "Sleep Config",
-                        "type": "menu"
-                    },
-                    {
-                        "children": [
-                            {
-                                "children": [],
-                                "depends_on": "IDF_TARGET_ESP32C3",
-                                "help": "Its not able to stall ESP32C3 systimer in sleep.\nTo fix related RTOS TICK issue, select it to disable related systimer during sleep.\nTODO: IDF-7036",
-                                "id": "ESP_SLEEP_SYSTIMER_STALL_WORKAROUND",
-                                "name": "ESP_SLEEP_SYSTIMER_STALL_WORKAROUND",
-                                "range": null,
-                                "title": "ESP32C3 SYSTIMER Stall Issue Workaround",
-                                "type": "bool"
-                            }
-                        ],
-                        "depends_on": null,
-                        "id": "component-config-hardware-settings-esp_sleep_workaround",
-                        "title": "ESP_SLEEP_WORKAROUND",
                         "type": "menu"
                     },
                     {
@@ -4668,16 +4482,6 @@
                         "name": "ESP_SYSTEM_CHECK_INT_LEVEL",
                         "title": "Interrupt level to use for Interrupt Watchdog and other system checks",
                         "type": "choice"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": "IDF_TARGET_ESP32S3",
-                        "help": "This configuration helps to address an BBPLL inaccurate issue when boot from certain bootloader version,\nwhich may increase about the boot-up time by about 200 us. Disable this when your bootloader is built with\nESP-IDF version v5.2 and above.",
-                        "id": "ESP_SYSTEM_BBPLL_RECALIB",
-                        "name": "ESP_SYSTEM_BBPLL_RECALIB",
-                        "range": null,
-                        "title": "Re-calibration BBPLL at startup",
-                        "type": "bool"
                     }
                 ],
                 "depends_on": null,
@@ -5625,132 +5429,6 @@
                         "children": [
                             {
                                 "children": [],
-                                "depends_on": "!APP_BUILD_TYPE_PURE_RAM_APP",
-                                "help": "This is a helper config for HPM. Invisible for users.",
-                                "id": "SPI_FLASH_UNDER_HIGH_FREQ",
-                                "name": "SPI_FLASH_UNDER_HIGH_FREQ",
-                                "range": null,
-                                "title": null,
-                                "type": "bool"
-                            },
-                            {
-                                "children": [
-                                    {
-                                        "children": [],
-                                        "depends_on": "<choice SPI_FLASH_HPM>",
-                                        "help": null,
-                                        "id": "SPI_FLASH_HPM_ENA",
-                                        "name": "SPI_FLASH_HPM_ENA",
-                                        "range": null,
-                                        "title": "Enable",
-                                        "type": "bool"
-                                    },
-                                    {
-                                        "children": [],
-                                        "depends_on": "<choice SPI_FLASH_HPM>",
-                                        "help": null,
-                                        "id": "SPI_FLASH_HPM_AUTO",
-                                        "name": "SPI_FLASH_HPM_AUTO",
-                                        "range": null,
-                                        "title": "Auto (Not recommended)",
-                                        "type": "bool"
-                                    },
-                                    {
-                                        "children": [],
-                                        "depends_on": "<choice SPI_FLASH_HPM>",
-                                        "help": null,
-                                        "id": "SPI_FLASH_HPM_DIS",
-                                        "name": "SPI_FLASH_HPM_DIS",
-                                        "range": null,
-                                        "title": "Disabled",
-                                        "type": "bool"
-                                    }
-                                ],
-                                "depends_on": "IDF_TARGET_ESP32S3 && !ESPTOOLPY_OCT_FLASH && !APP_BUILD_TYPE_PURE_RAM_APP",
-                                "help": "Whether the High Performance Mode of Flash is enabled. As an optional feature, user needs to manually\nenable this option as a confirmation. To be back-compatible with earlier IDF versionn, this option is\nautomatically enabled with warning when Flash running > 80Mhz.",
-                                "id": "component-config-main-flash-configuration-optional-and-experimental-features-read-docs-first--high-performance-mode-read-docs-first-80mhz-",
-                                "name": "SPI_FLASH_HPM",
-                                "title": "High Performance Mode (READ DOCS FIRST, > 80MHz)",
-                                "type": "choice"
-                            },
-                            {
-                                "children": [],
-                                "depends_on": "!APP_BUILD_TYPE_PURE_RAM_APP",
-                                "help": "This option is invisible, and will be selected automatically\nwhen ``ESPTOOLPY_FLASHFREQ_120M`` is selected.",
-                                "id": "SPI_FLASH_HPM_ON",
-                                "name": "SPI_FLASH_HPM_ON",
-                                "range": null,
-                                "title": null,
-                                "type": "bool"
-                            },
-                            {
-                                "children": [
-                                    {
-                                        "children": [],
-                                        "depends_on": "<choice SPI_FLASH_HPM_DC>",
-                                        "help": null,
-                                        "id": "SPI_FLASH_HPM_DC_AUTO",
-                                        "name": "SPI_FLASH_HPM_DC_AUTO",
-                                        "range": null,
-                                        "title": "Auto (Enable when bootloader support enabled (BOOTLOADER_FLASH_DC_AWARE))",
-                                        "type": "bool"
-                                    },
-                                    {
-                                        "children": [],
-                                        "depends_on": "<choice SPI_FLASH_HPM_DC>",
-                                        "help": null,
-                                        "id": "SPI_FLASH_HPM_DC_DISABLE",
-                                        "name": "SPI_FLASH_HPM_DC_DISABLE",
-                                        "range": null,
-                                        "title": "Disable (READ DOCS FIRST)",
-                                        "type": "bool"
-                                    }
-                                ],
-                                "depends_on": "SPI_FLASH_HPM_ON && !APP_BUILD_TYPE_PURE_RAM_APP",
-                                "help": "This feature needs your bootloader to be compiled DC-aware (BOOTLOADER_FLASH_DC_AWARE=y). Otherwise the\nchip will not be able to boot after a reset.",
-                                "id": "component-config-main-flash-configuration-optional-and-experimental-features-read-docs-first--support-hpm-using-dc-read-docs-first-",
-                                "name": "SPI_FLASH_HPM_DC",
-                                "title": "Support HPM using DC (READ DOCS FIRST)",
-                                "type": "choice"
-                            },
-                            {
-                                "children": [],
-                                "depends_on": "!APP_BUILD_TYPE_PURE_RAM_APP",
-                                "help": "This is a helper config for HPM. Whether HPM-DC is enabled is also determined by bootloader.\nInvisible for users.",
-                                "id": "SPI_FLASH_HPM_DC_ON",
-                                "name": "SPI_FLASH_HPM_DC_ON",
-                                "range": null,
-                                "title": null,
-                                "type": "bool"
-                            },
-                            {
-                                "children": [],
-                                "depends_on": "IDF_TARGET_ESP32C3 && !SPI_FLASH_USE_LEGACY_IMPL && !SPI_FLASH_ROM_IMPL && !APP_BUILD_TYPE_PURE_RAM_APP",
-                                "help": "This option is disabled by default because it is supported only\nfor specific flash chips and for specific Espressif chips.\nTo evaluate if you can use this feature refer to\n`Optional Features for Flash` > `Auto Suspend & Resume` of the `ESP-IDF Programming Guide`.\n\nCAUTION: If you want to OTA to an app with this feature turned on, please make\nsure the bootloader has the support for it. (later than IDF v4.3)\n\nIf you are using an official Espressif module, please contact Espressif Business support\nto check if the module has the flash that support this feature installed.\nAlso refer to `Concurrency Constraints for Flash on SPI1` > `Flash Auto Suspend Feature`\nbefore enabling this option.",
-                                "id": "SPI_FLASH_AUTO_SUSPEND",
-                                "name": "SPI_FLASH_AUTO_SUSPEND",
-                                "range": null,
-                                "title": "Auto suspend long erase/write operations (READ DOCS FIRST)",
-                                "type": "bool"
-                            }
-                        ],
-                        "depends_on": "!APP_BUILD_TYPE_PURE_RAM_APP",
-                        "id": "component-config-main-flash-configuration-optional-and-experimental-features-read-docs-first-",
-                        "title": "Optional and Experimental Features (READ DOCS FIRST)",
-                        "type": "menu"
-                    }
-                ],
-                "depends_on": "!APP_BUILD_TYPE_PURE_RAM_APP",
-                "id": "component-config-main-flash-configuration",
-                "title": "Main Flash configuration",
-                "type": "menu"
-            },
-            {
-                "children": [
-                    {
-                        "children": [
-                            {
-                                "children": [],
                                 "depends_on": "SPI_FLASH_VERIFY_WRITE",
                                 "help": "If this option is enabled, if SPI flash write verification fails then a log error line\nwill be written with the address, expected & actual values. This can be useful when\ndebugging hardware SPI flash problems.",
                                 "id": "SPI_FLASH_LOG_FAILED_WRITE",
@@ -5907,6 +5585,16 @@
                         "name": "SPI_FLASH_YIELD_DURING_ERASE",
                         "range": null,
                         "title": "Enables yield operation during flash erase",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": "IDF_TARGET_ESP32C3 && !SPI_FLASH_USE_LEGACY_IMPL && !SPI_FLASH_ROM_IMPL",
+                        "help": "This option is default n before ESP32-C3, because it needs bootloader support.\n\nCAUTION: If you want to OTA to an app with this feature turned on, please make\nsure the bootloader has the support for it. (later than IDF v4.3)\n\nAuto-suspend feature only supported by XMC chip.\nIf you are using an official module, please contact Espressif Business support.\nAlso reading auto suspend part in `SPI Flash API` document before you enable this function.",
+                        "id": "SPI_FLASH_AUTO_SUSPEND",
+                        "name": "SPI_FLASH_AUTO_SUSPEND",
+                        "range": null,
+                        "title": "Auto suspend long erase/write operations (READ DOCS FIRST)",
                         "type": "bool"
                     },
                     {
