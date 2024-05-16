@@ -371,7 +371,7 @@ void send_data_http(void *pvParameters){
             }
             close(s);
         }
-        // vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(SEND_DATA_PERIOD * 60000));
+        vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(SEND_DATA_PERIOD * 60000));
         vTaskDelete(NULL);
     }
 }
