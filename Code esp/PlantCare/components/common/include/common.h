@@ -23,8 +23,8 @@
 #define RS485_RX 16
 #define RS485_TX 17
 
-#define SDA_PIN 21
-#define SCL_PIN 22
+#define SDA_PIN 4 //21
+#define SCL_PIN 5 //22
 #define ADDR BH1750_ADDR_LO
 
 #define DEFAULT_VREF    1100

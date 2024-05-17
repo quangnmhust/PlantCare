@@ -111,21 +111,21 @@ void app_main(void){
     /*Task*/
 
     //ADC Task
-    xTaskCreatePinnedToCore(adc_sensor_task, "adc_sensor_task", 2048*2, NULL, 5, &adc_sensor_handle, tskNO_AFFINITY);
+    // xTaskCreatePinnedToCore(adc_sensor_task, "adc_sensor_task", 2048*2, NULL, 5, &adc_sensor_handle, tskNO_AFFINITY);
 
     // I2C Task
     // SHT
-    xTaskCreatePinnedToCore(sht_sensor_task, "sht_sensor_task", 2048*2, NULL, 5, &sht_sensor_handle, tskNO_AFFINITY);
+    // xTaskCreatePinnedToCore(sht_sensor_task, "sht_sensor_task", 2048*2, NULL, 5, &sht_sensor_handle, tskNO_AFFINITY);
     // BH1750
     xTaskCreatePinnedToCore(lux_sensor_task, "lux_sensor_task", 2048*2, NULL, 5, &lux_sensor_handle, tskNO_AFFINITY);
     //ds3231
-    xTaskCreatePinnedToCore(rtc_sensor, "rtc_sensor", 2048*2, NULL, 5, &rtc_sensor_handle, tskNO_AFFINITY);
+    // xTaskCreatePinnedToCore(rtc_sensor, "rtc_sensor", 2048*2, NULL, 5, &rtc_sensor_handle, tskNO_AFFINITY);
 
     //Onewire Task
     // xTaskCreatePinnedToCore(soil_sensor_task, "soil_sensor_task", 2048*2, NULL, 5, &soil_sensor_handle, tskNO_AFFINITY);
 
     //Get and send data
-    xTaskCreatePinnedToCore(get_data_sensor, "get_data_sensor", 2048*2, NULL, 7, &get_data_handle, tskNO_AFFINITY);
+    // xTaskCreatePinnedToCore(get_data_sensor, "get_data_sensor", 2048*2, NULL, 7, &get_data_handle, tskNO_AFFINITY);
     // xTaskCreatePinnedToCore(send_data_http, "send_data_http", 2048*2, NULL, 8, &send_http_handle, tskNO_AFFINITY);
     
 }
@@ -144,10 +144,10 @@ void program_init(void){
 	ESP_LOGI(__func__, "Create Queue success.");
 
     //Wifi and MQTT connection
-    wifi_connection();
+    // wifi_connection();
     
     //ADC init
-    ADC_Init();
+    // ADC_Init();
 
     //I2C init
     I2C_init();
