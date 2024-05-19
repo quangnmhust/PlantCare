@@ -69,6 +69,7 @@ void printSoilParameters(){
     Serial.println(" ppm");
 
 
+
     Serial.print("Photpho hiện tại: ");
     Serial.print(soilP);
     Serial.println(" ppm");
