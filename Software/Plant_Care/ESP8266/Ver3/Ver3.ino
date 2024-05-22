@@ -166,7 +166,7 @@ void setup() {
   ThingSpeak.setField(3, SensorData.Env_Lux);
   ThingSpeak.setField(4, SensorData.Soil_humi);
   ThingSpeak.setField(5, SensorData.Soil_pH);
-  ThingSpeak.setField(6, SensorData.Soil_Nito);
+  ThingSpeak.setField(6, SensorData.Soil_temp);
   ThingSpeak.setField(7, SensorData.Soil_Phosp);
   ThingSpeak.setField(8, SensorData.Soil_Kali);
   // write to the ThingSpeak channel

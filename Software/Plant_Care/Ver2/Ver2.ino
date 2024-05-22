@@ -2,14 +2,14 @@
 #include <ThingSpeak.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <LiquidCrystal_I2C.h>
+// #include <LiquidCrystal_I2C.h>
 #include <RTClib.h>
 #include <BH1750.h>
 // #include <SHT25.h>
 #include "Adafruit_SHT4x.h"
-#include "nRF24L01.h"
-#include "RF24.h"
-#include <EasyButton.h>
+// #include "nRF24L01.h"
+// #include "RF24.h"
+// #include <EasyButton.h>
 
 #include "time.h"
 #include "FS.h"
@@ -947,7 +947,7 @@ void getData_task(void *pvParameters) {
     ThingSpeak.setField(3, temp_data.Env_Humi);
     ThingSpeak.setField(4, temp_data.Soil_humi);
     ThingSpeak.setField(5, temp_data.Soil_pH);
-    ThingSpeak.setField(6, temp_data.Soil_Nito);
+    ThingSpeak.setField(6, temp_data.Soil_temp);
     ThingSpeak.setField(7, temp_data.Soil_Phosp);
     ThingSpeak.setField(8, temp_data.Soil_Kali);
 
