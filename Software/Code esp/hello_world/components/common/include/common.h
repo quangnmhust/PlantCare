@@ -9,7 +9,7 @@
 #include <math.h>
 #include <string.h>
 
-#define GET_DATA_PERIOD 5
+#define GET_DATA_PERIOD 2
 #define SEND_DATA_PERIOD 1
 
 #define WIFI_CONNECTED_BIT BIT0
@@ -23,11 +23,11 @@
 #define RS485_RX 16
 #define RS485_TX 17
 
-#define SDA_PIN 5 //21
-#define SCL_PIN 6 //22
+#define SDA_PIN 19 //21
+#define SCL_PIN 22 //22
 #define ADDR BH1750_ADDR_LO
 
-#define DEFAULT_VREF    3300
+#define DEFAULT_VREF    1100
 #define NO_OF_SAMPLES   64
 #define soil_Air 2000
 #define soil_Water 4159

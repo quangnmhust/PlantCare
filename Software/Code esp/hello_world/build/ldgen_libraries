@@ -28,7 +28,7 @@ D:/Espressif/frameworks/hello_world/build/esp-idf/log/liblog.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/heap/libheap.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/soc/libsoc.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/esp_hw_support/libesp_hw_support.a
-D:/Espressif/frameworks/hello_world/build/esp-idf/riscv/libriscv.a
+D:/Espressif/frameworks/hello_world/build/esp-idf/xtensa/libxtensa.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/esp_common/libesp_common.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/esp_timer/libesp_timer.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/freertos/libfreertos.a
@@ -65,7 +65,9 @@ D:/Espressif/frameworks/hello_world/build/esp-idf/json/libjson.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/libsodium/liblibsodium.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/mqtt/libmqtt.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/openssl/libopenssl.a
+D:/Espressif/frameworks/hello_world/build/esp-idf/perfmon/libperfmon.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/spiffs/libspiffs.a
+D:/Espressif/frameworks/hello_world/build/esp-idf/ulp/libulp.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/wifi_provisioning/libwifi_provisioning.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/main/libmain.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/i2cdev/libi2cdev.a
@@ -74,3 +76,4 @@ D:/Espressif/frameworks/hello_world/build/esp-idf/cc1101/libcc1101.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/common/libcommon.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/onewire/libonewire.a
 D:/Espressif/frameworks/hello_world/build/esp-idf/ds18x20/libds18x20.a
+D:/Espressif/frameworks/hello_world/build/esp-idf/sht4x/libsht4x.a

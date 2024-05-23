@@ -39,6 +39,7 @@
 #include "i2cdev.h"
 #include <bh1750.h>
 #include <ds18x20.h>
+#include <sht4x.h>
 
 #define SSID CONFIG_SSID
 #define PASS CONFIG_PASSWORD
@@ -47,8 +48,8 @@
 #define WEB_PORT  CONFIG_WEB_PORT       
 
 static esp_adc_cal_characteristics_t *adc_chars;
-static const adc_channel_t channel = ADC1_CHANNEL_1;     //GPIO34 if ADC1, GPIO14 if ADC2
-static const adc_bits_width_t width = ADC_WIDTH_BIT_12;
+static const adc_channel_t channel = ADC_CHANNEL_6;     //GPIO34 if ADC1, GPIO14 if ADC2
+static const adc_bits_width_t width = ADC_WIDTH_BIT_12;  
 static const adc_atten_t atten = ADC_ATTEN_DB_11;
 static const adc_unit_t unit = ADC_UNIT_1;
 
@@ -98,6 +99,7 @@ volatile Data_t Data;
 char data_string[256];
 
 i2c_dev_t bh1750;
+static sht4x_t sht40;
 
 const struct addrinfo hints = {
 		.ai_family = AF_INET,
@@ -130,6 +132,8 @@ void app_main(void){
     // I2C Task
     // BH1750
     xTaskCreatePinnedToCore(lux_sensor_task, "lux_sensor_task", 2048*2, NULL, 5, &lux_sensor_handle, tskNO_AFFINITY);
+    // //SHT
+    xTaskCreatePinnedToCore(sht_sensor_task, "sht_sensor_task", 2048*2, NULL, 5, &sht_sensor_handle, tskNO_AFFINITY);
 
     //Onewire Task
     xTaskCreatePinnedToCore(soil_sensor_task, "soil_sensor_task", 2048*2, NULL, 5, &soil_sensor_handle, tskNO_AFFINITY);
@@ -154,7 +158,7 @@ void program_init(void){
 	ESP_LOGI(__func__, "Create Queue success.");
 
     //Wifi and MQTT connection
-    // wifi_connection();
+    wifi_connection();
     
     //ADC init
     ADC_Init();
@@ -221,7 +225,8 @@ void soil_sensor_task(void *pvParameters){
 
                 Data.Soil_temp=temp_c;
             }
-            vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(10000));
+            // vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(10000));
+            vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(GET_DATA_PERIOD * 60000));
         }
     }
     
@@ -248,8 +253,34 @@ void lux_sensor_task(void *pvParameters){
             Data.Env_Lux = lux;
             xSemaphoreGive(I2C_mutex);
         }
-        // vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(GET_DATA_PERIOD * 60000));
-        vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(10000));
+        vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(GET_DATA_PERIOD * 60000));
+        // vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(10000));
+    }
+}
+
+void sht_sensor_task(void *pvParameters){
+
+    ESP_ERROR_CHECK(sht4x_init_desc(&sht40, 0, SDA_PIN, SCL_PIN));
+    ESP_ERROR_CHECK(sht4x_init(&sht40));
+    float temperature;
+    float humidity;
+
+    TickType_t last_wakeup = xTaskGetTickCount();
+
+    while (1)
+    {
+        vTaskDelay(2000/portTICK_RATE_MS);
+        if(xSemaphoreTake(I2C_mutex, portMAX_DELAY) == pdTRUE){
+            // perform one measurement and do something with the results
+            ESP_ERROR_CHECK(sht4x_measure(&sht40, &temperature, &humidity));
+            printf("sht4x Sensor: %.2f °C, %.2f %%\n", temperature, humidity);
+            Data.Env_temp = temperature;
+            Data.Env_Humi = humidity;
+            xSemaphoreGive(I2C_mutex);
+        }
+        // wait until 5 seconds are over
+        // vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(10000));
+        vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(GET_DATA_PERIOD * 60000));
     }
 }
 
@@ -274,7 +305,8 @@ void adc_sensor_task(void *pvParameters){
         uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, adc_chars);
         printf("Raw: %d\tVoltage: %dmV\n", adc_reading, voltage);
         Data.Soil_humi = adc_reading;
-        vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(10000));
+        // vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(10000));
+        vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(GET_DATA_PERIOD * 60000));
     }
 }   
 
@@ -285,7 +317,7 @@ void get_data_sensor(void *pvParameters){
         vTaskDelay(6000/portTICK_RATE_MS);
         data_temp = Data;
         memset(data_string, 0, 256);
-        sprintf(data_string, "{\n\t\"Time_real_Date\":\"%02d/%02d/%04d %02d:%02d:%02d\",\n\t\"Soil_temp\":%.2f,\n\t\"Soil_Humi\":%d,\n\t\"Env_Lux\":%d\n}",
+        sprintf(data_string, "{\n\t\"Time_real_Date\":\"%02d/%02d/%04d %02d:%02d:%02d\",\n\t\"Soil_temp\":%.2f,\n\t\"Soil_Humi\":%d,\n\t\"Env_Lux\":%d,\n\t\"Env_Temp\":%.2f,\n\t\"Env_humi\":%.2f\n}",
                 data_temp.time_data.time_day,
                 data_temp.time_data.time_month,
                 data_temp.time_data.time_year,
@@ -295,15 +327,17 @@ void get_data_sensor(void *pvParameters){
 
                 data_temp.Soil_temp,
                 data_temp.Soil_humi,
-                data_temp.Env_Lux);
+                data_temp.Env_Lux,
+                data_temp.Env_temp,
+                data_temp.Env_Humi);
         ESP_LOGI(__func__, "%s",data_string);
         // ESP_LOGI(__func__, "SHT: %d, BH1750: %d, ADC: %d, RTC: %d", Device_status.sht_status, Device_status.lux_status, Device_status.soil_status, Device_status.rtc_status);
 
-        // xQueueSendToBack(dataHTTP_queue, &data_temp, 500/portMAX_DELAY);
-        // ESP_LOGI(__func__, "HTTP waiting to read %d, Available space %d", uxQueueMessagesWaiting(dataHTTP_queue), uxQueueSpacesAvailable(dataHTTP_queue));
-        // xTaskCreatePinnedToCore(send_data_http, "send_data_http", 2048*2, NULL, 8, &send_http_handle, tskNO_AFFINITY);
-        // vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(GET_DATA_PERIOD * 60000));
-        vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(10000));
+        xQueueSendToBack(dataHTTP_queue, &data_temp, 500/portMAX_DELAY);
+        ESP_LOGI(__func__, "HTTP waiting to read %d, Available space %d", uxQueueMessagesWaiting(dataHTTP_queue), uxQueueSpacesAvailable(dataHTTP_queue));
+        xTaskCreatePinnedToCore(send_data_http, "send_data_http", 2048*2, NULL, 8, &send_http_handle, tskNO_AFFINITY);
+        vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(GET_DATA_PERIOD * 60000));
+        // vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(10000));
     }
 }
 
@@ -354,7 +388,14 @@ void send_data_http(void *pvParameters){
                         if (xSemaphoreTake(send_data_mutex, portMAX_DELAY) == pdTRUE){   
                             memset(REQUEST, 0, 512);
 
-                            sprintf(REQUEST, "GET https://api.thingspeak.com/update?api_key=%s&field1=%.2f&field2=%d&field3=%d\n\n\n", API_KEY, data_http.Soil_temp, data_http.Soil_humi, data_http.Env_Lux);
+                            sprintf(REQUEST, "GET https://api.thingspeak.com/update?api_key=%s&field1=%.2f&field2=%.2f&field3=%d&field4=%.2f&field5=%d\n\n\n\n\n", 
+                                API_KEY, 
+                                data_http.Env_temp, 
+                                data_http.Env_Humi, 
+                                data_http.Env_Lux,
+                                data_http.Soil_temp,
+                                data_http.Soil_humi
+                            );
 
                             ESP_LOGI(__func__, "%s",REQUEST);
 
@@ -380,6 +421,7 @@ void send_data_http(void *pvParameters){
 void I2C_init(void){
     ESP_ERROR_CHECK(i2cdev_init());
     memset(&bh1750, 0, sizeof(i2c_dev_t));
+    memset(&sht40, 0, sizeof(sht4x_t));
 }
 
 static void check_efuse(void)
