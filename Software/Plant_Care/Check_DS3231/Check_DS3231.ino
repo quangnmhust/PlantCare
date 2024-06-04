@@ -11,7 +11,7 @@ const char* ssid     = "Tom Bi";
 const char* password = "TBH123456";
 
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 6*3600+5;
+const long  gmtOffset_sec = 6*3600;
 const int   daylightOffset_sec = 3600;
 
 void setup () {
