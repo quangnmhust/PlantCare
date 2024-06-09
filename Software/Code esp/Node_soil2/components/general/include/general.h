@@ -26,7 +26,10 @@ typedef struct
 
 typedef struct Data_manager
 {
+    int id;
     data_time time_data;
+    float Soil_temp;
+    float Soil_humi;
     float Env_temp;
     float Env_humi;
     uint16_t Env_lux;
